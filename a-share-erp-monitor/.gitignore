@@ -1,0 +1,9 @@
+# Local runtime, platform state, and exported observations
+.openai/
+__pycache__/
+*.py[cod]
+.DS_Store
+*.csv
+*.zip
+.env
+.env.*
