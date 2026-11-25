@@ -1,4 +1,4 @@
-import {META,SNAPSHOT,WIND,readCSV,stats,windowStart,zone,spreadBands} from './core.mjs';
+import {META,SNAPSHOT,WIND,WIND_BANDS,readCSV,stats,windowStart,zone,spreadBands} from './core.mjs';
 const $=id=>document.getElementById(id), codes=Object.keys(META).sort((a,b)=>['000852','000905','000300'].indexOf(a)-['000852','000905','000300'].indexOf(b));
 const storeKey='cn-erp-monitor-v1', cv=$('plot'), ctx=cv.getContext('2d');
 const fmt=(x,n=2)=>Number.isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:n,maximumFractionDigits:n}):'—';
@@ -49,7 +49,7 @@ function renderControls(){
     $(id).value=String(x);$(id+'N').value=l?String(x):'';
   }
   $('thresholdTitle').textContent=META[focus].name+'阈值';
-  $('levelsNote').textContent=l?(mode==='wind'&&focus==='000852'?'中证1000 原图默认值为 −0.90 / +0.70 个百分点，中位数 +0.09；可拖动滑块或图中的虚线。':'这是当前指数的自定义阈值。'): '当前数据源未预置该指数阈值。拖动任一滑块设定一组自定义值。';
+  $('levelsNote').textContent=l?(mode==='wind'?'原图参考线已预置；改动滑块只影响本浏览器，不影响中证数据。':'这是当前指数的自定义阈值。'): '当前数据源未预置该指数阈值。拖动任一滑块设定一组自定义值。';
 }
 function rowStats(c){
   const s=stats(grouped[c],dates[b],sample);
@@ -58,9 +58,7 @@ function rowStats(c){
 }
 function renderReadouts(){
   const s=rowStats(focus),r=s.last,l=limits(focus);
-  const w=mode==='wind'&&focus==='000852';
-  const band=w?{max:1.61,mean:-.07,min:-1.90,plus:.78,minus:-.92,z:1.54}:
-    mode==='wind'?{}:spreadBands(grouped[focus].filter(x=>x.date>=windowStart(dates[b],sample)&&x.date<=dates[b]).map(x=>x.erp));
+  const band=mode==='wind'?WIND_BANDS[focus]:spreadBands(grouped[focus].filter(x=>x.date>=windowStart(dates[b],sample)&&x.date<=dates[b]).map(x=>x.erp));
   const pp=v=>unit(v,' pp');
   const items=[
     ['风险溢价',pp(r?.erp),'emph'],['盈利收益率',unit(r?.ey,'%')],['10 年国债',unit(r?.bond,'%')],
@@ -75,6 +73,7 @@ function renderReadouts(){
 function render(){
   const n=dates.length;
   $('dataset').textContent=mode==='wind'?'Wind 原图快照 · 2026-11-20':mode==='csi'?'中证重算 · '+rows.at(-1).date:'本地 CSV · '+rows.length.toLocaleString('zh-CN')+' 行';
+  $('windChart').hidden=mode!=='wind';
   $('viewTitle').textContent=compare?'三指数风险溢价叠加':META[focus].name+'风险溢价';
   $('viewSub').textContent=mode==='wind'?'仅内置 11 月 20 日的 Wind 原图读数。原图历史曲线请点上方链接；未取得逐日 Wind 数据，不以其他来源补齐。':dates[0]+' 至 '+dates.at(-1)+(mode==='csi'?' · '+grouped[focus].length+' 个交易日 · 中证滚动 PE 与中证国债；分位不是原图的近十年分位。':' · 本地导入，不自动更新');
   $('compare').setAttribute('aria-pressed',compare);$('price').setAttribute('aria-pressed',prices);
@@ -252,6 +251,6 @@ const initialTicket=ticket;
     if(ticket===initialTicket&&mode==='wind')setMode('csi',next);
     else syncPicker();
   }catch{
-    if(ticket===initialTicket&&mode==='wind')msg('尚无可读取的中证自动数据，当前显示 Wind 原图快照。');
+    if(ticket===initialTicket&&mode==='wind')msg('暂无可读取的中证自动数据，当前显示 Wind 原图快照。');
   }
 })();

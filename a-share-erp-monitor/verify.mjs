@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {SNAPSHOT,readCSV,stats,erp,pct,windowStart,zone,spreadBands} from './dist/core.mjs';
+import {META,WIND_BANDS,SNAPSHOT,readCSV,stats,erp,pct,windowStart,zone,spreadBands} from './dist/core.mjs';
 const csv='date,code,pe_ttm,bond10y_pct,close\n';
 test('Snapshot values intact, and one observation is not ranked',()=>{
  assert.deepEqual(SNAPSHOT.map(x=>x.erp),[1.24,2.17,5.84]);assert.equal(stats([SNAPSHOT[0]],'2026-11-20').pct,null)
@@ -34,4 +34,12 @@ test('Sidebar bands use population dispersion and do not rank a single point',()
  assert.ok(Math.abs(b.plus-(2+Math.sqrt(2/3)))<1e-12);
  assert.ok(Math.abs(b.z-Math.sqrt(3/2))<1e-12);
  assert.equal(spreadBands([1]).z,null);assert.equal(spreadBands([2,2]).z,null);
+});
+
+test('Wind reference lines are present for all three indices, not data-derived',()=>{
+ assert.deepEqual(META['000852'].levels,[-.90,.70]);
+ assert.deepEqual(META['000905'].levels,[.32,2]);
+ assert.deepEqual(META['000300'].levels,[4.07,6.03]);
+ assert.deepEqual(Object.values(META).map(x=>x.median),[.09,1.24,5.24]);
+ assert.equal(WIND_BANDS['000300'].minus,4.03);
 });

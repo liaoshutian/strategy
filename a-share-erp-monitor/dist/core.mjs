@@ -1,14 +1,19 @@
 /* ES module; dependency free. */
 export const META={
   '000852':{name:'中证1000',color:'#84efbc',levels:[-.90,.70],median:.09},
-  '000905':{name:'中证500',color:'#80bfff',levels:null,median:null},
-  '000300':{name:'沪深300',color:'#ffca88',levels:null,median:null}
+  '000905':{name:'中证500',color:'#80bfff',levels:[.32,2],median:1.24},
+  '000300':{name:'沪深300',color:'#ffca88',levels:[4.07,6.03],median:5.24}
 };
 export const WIND='https://finance.sina.cn/2026-11-24/detail-inizveck0157912.d.html?cre=tianyi&loc=5&mod=wfin&r=25&rfunc=21&tj=cxvertical_wap_wfin&tr=0';
+export const WIND_BANDS={
+  '000852':{max:1.61,mean:-.07,min:-1.90,plus:.78,minus:-.92,z:1.54},
+  '000905':{max:3.18,mean:1.14,min:-1.29,plus:2.14,minus:.14,z:1.03},
+  '000300':{max:7.20,mean:5.07,min:2.41,plus:6.12,minus:4.03,z:.73}
+};
 export const SNAPSHOT=[
   {date:'2026-11-20',code:'000852',pe:null,ey:2.82,bond:1.58,erp:1.24,close:5648.63,sourcePct:95.6},
-  {date:'2026-11-20',code:'000905',pe:null,ey:null,bond:null,erp:2.17,close:null,sourcePct:87.57},
-  {date:'2026-11-20',code:'000300',pe:null,ey:null,bond:null,erp:5.84,close:null,sourcePct:72.41}
+  {date:'2026-11-20',code:'000905',pe:null,ey:3.75,bond:1.58,erp:2.17,close:6006.08,sourcePct:87.57},
+  {date:'2026-11-20',code:'000300',pe:null,ey:7.41,bond:1.58,erp:5.84,close:3954.57,sourcePct:72.41}
 ];
 export const erp=(pe,bond)=>100/pe-bond;
 export function spreadBands(values){
