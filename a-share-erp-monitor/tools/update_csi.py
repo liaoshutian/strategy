@@ -12,7 +12,7 @@ import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -26,17 +26,27 @@ OUT = Path(__file__).resolve().parents[1] / "dist" / "data" / "csi.csv"
 
 
 def download(url, **params):
-    req = Request(url + "?" + urlencode(params), headers={
+    req = Request(url + "?" + urlencode(params, quote_via=quote), headers={
         "Accept": "application/json", "User-Agent": "strategy-erp-monitor/1.0",
-        "Referer": "https://www.csindex.com.cn/" if url == PE_URL else "https://www.amac.org.cn/",
+        "Referer": "https://www.csindex.com.cn/" if url == PE_URL else "https://www.amac.org.cn/sjtj/fwjgxxjcp/zzzs/",
     })
     for attempt in range(3):
         try:
             with urlopen(req, timeout=18) as response:
                 payload = response.read(4_000_001)
+                domain = urlsplit(response.url).hostname
+                kind = response.headers.get_content_type()
+                status = response.status
             if len(payload) > 4_000_000:
                 raise ValueError("oversized upstream response")
-            return json.loads(payload)
+            try:
+                return json.loads(payload)
+            except (ValueError, UnicodeError) as exc:
+                if b"captcha" in payload[:10000].lower() or b"challenge" in payload[:10000].lower():
+                    raise PermissionError(f"upstream requires browser verification: {domain}") from exc
+                raise ValueError(f"upstream returned non-JSON: HTTP {status}, {kind}, {len(payload)} bytes, host {domain}") from exc
+        except PermissionError:
+            raise
         except (OSError, ValueError) as exc:
             if attempt == 2:
                 raise ValueError(f"{url}: {exc}") from exc
@@ -202,7 +212,7 @@ def main():
     try:
         if not refresh(a.output, end, a.start):
             print("No changes; retained the last valid CSV.")
-    except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
+    except (ValueError, KeyError, TypeError, InvalidOperation, OSError) as exc:
         parser.exit(1, f"Refresh rejected: {exc}\n")
 
 
