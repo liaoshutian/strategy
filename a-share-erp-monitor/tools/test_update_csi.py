@@ -88,6 +88,12 @@ class RefreshTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "366"):
             self.run_refresh(date(2015, 1, 5))
 
+    def test_makeup_weekend_not_an_a_share_session(self):
+        self.days.insert(0, date(2026, 10, 11))
+        self.missing_bond = self.days[0]
+        self.assertTrue(self.run_refresh())
+        self.assertEqual(len(read_history(self.path)), 9)
+
     def test_wrong_source_date(self):
         with self.assertRaisesRegex(ValueError, "out-of-range"):
             get_bonds(self.end, self.end, lambda *_a, **_kw: {"data": {"errcode": 0,

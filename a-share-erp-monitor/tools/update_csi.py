@@ -85,6 +85,10 @@ def get_index(code, start, end, get):
         dt = day(row["tradeDate"])
         if not start <= dt <= end:
             raise ValueError(f"CSI {code}: out-of-range date {dt}")
+        if dt.weekday() >= 5:
+            # A-share exchanges also close on make-up weekend working days.
+            print(f"CSI {code}: ignored non-exchange weekend observation {dt}")
+            continue
         if row.get("indexCode") not in (None, "", code):
             raise ValueError(f"CSI {code}: unexpected index code")
         add_unique(result, dt, (decimal(row["peg"], ".001", "1000000"),
