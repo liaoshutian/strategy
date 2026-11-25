@@ -6,8 +6,9 @@ const unit=(x,u,n)=>Number.isFinite(x)?fmt(x,n)+u:'—';
 const safeJSON=(s,fallback)=>{try{return JSON.parse(s)||fallback}catch{return fallback}};
 const get=k=>{try{return localStorage.getItem(k)}catch{return null}};
 const put=(k,v)=>{try{localStorage.setItem(k,v);return true}catch{return false}};
+let csiRows=null,csvRows=null;
 let raw=get(storeKey+'-source'), rows=SNAPSHOT, mode='wind', savedLevels=safeJSON(get(storeKey+'-levels'),{});
-if(raw)try{rows=readCSV(raw);mode='csv'}catch{raw=null}
+if(raw)try{rows=csvRows=readCSV(raw);mode='csv'}catch{raw=null}
 let focus=codes.find(c=>rows.some(r=>r.code===c))||codes[0], compare=false, prices=false, sample=0, filter=0, hover=-1, drag=null, cursorX=0, cursorY=0;
 let dates=[], grouped={}, a=0,b=0, visible=[], plotted=[], geom={};
 function limits(code){const taken=savedLevels?.[mode]?.[code];return Array.isArray(taken)&&taken.length===2&&taken.every(Number.isFinite)&&taken[0]<taken[1]?taken:(mode==='wind'?META[code].levels:null)}
@@ -25,8 +26,12 @@ function regroup(){
   const start=dates.findIndex(d=>d>=first);
   a=Math.max(start,0);b=dates.length-1;hover=-1;
 }
-function setMode(isCsv,next){
-  rows=next;mode=isCsv?'csv':'wind';
+function syncPicker(){
+  const s=$('source');s.querySelector('[value=csi]').disabled=!csiRows;
+  s.querySelector('[value=csv]').disabled=!csvRows;s.value=mode;
+}
+function setMode(nextMode,next){
+  rows=next;mode=nextMode;syncPicker();
   if(!rows.some(r=>r.code===focus))focus=codes.find(c=>rows.some(r=>r.code===c));
   compare=false;prices=false;filter=0;sample=0;$('sample').value='0';regroup();render()
 }
@@ -44,7 +49,7 @@ function renderControls(){
     $(id).value=String(x);$(id+'N').value=l?String(x):'';
   }
   $('thresholdTitle').textContent=META[focus].name+'阈值';
-  $('levelsNote').textContent=l?(mode==='wind'&&focus==='000852'?'中证1000 原图默认值为 −0.90 / +0.70 个百分点，中位数 +0.09；可拖动滑块或图中的虚线。':'这是当前指数的自定义阈值。'): '原图口径未预置该指数阈值。拖动任一滑块设定一组自定义值。';
+  $('levelsNote').textContent=l?(mode==='wind'&&focus==='000852'?'中证1000 原图默认值为 −0.90 / +0.70 个百分点，中位数 +0.09；可拖动滑块或图中的虚线。':'这是当前指数的自定义阈值。'): '当前数据源未预置该指数阈值。拖动任一滑块设定一组自定义值。';
 }
 function rowStats(c){
   const s=stats(grouped[c],dates[b],sample);
@@ -53,9 +58,9 @@ function rowStats(c){
 }
 function render(){
   const n=dates.length;
-  $('dataset').textContent=mode==='wind'?'Wind 原图快照 · 2026-11-20':'本地 CSV · '+rows.length.toLocaleString('zh-CN')+' 行';
+  $('dataset').textContent=mode==='wind'?'Wind 原图快照 · 2026-11-20':mode==='csi'?'中证自动数据 · '+rows.at(-1).date:'本地 CSV · '+rows.length.toLocaleString('zh-CN')+' 行';
   $('viewTitle').textContent=compare?'三指数风险溢价叠加':META[focus].name+'风险溢价';
-  $('viewSub').textContent=mode==='wind'?'仅内置同一天的 Wind 参考读数，未预置历史曲线，不自动更新。导入同口径 CSV 后可缩放、平移和计算历史分位。':dates[0]+' 至 '+dates.at(-1)+' · 本地导入，不自动更新';
+  $('viewSub').textContent=mode==='wind'?'仅内置同一天的 Wind 参考读数，未预置历史曲线，不自动更新。导入同口径 CSV 后可缩放、平移和计算历史分位。':dates[0]+' 至 '+dates.at(-1)+(mode==='csi'?' · 中证滚动 PE + 中证 10 年期国债到期收益率；数据截至实际观测日，非 Wind 口径。':' · 本地导入，不自动更新');
   $('compare').setAttribute('aria-pressed',compare);$('price').setAttribute('aria-pressed',prices);
   $('price').disabled=!grouped[focus].some(r=>r.close!=null);$('sample').disabled=mode==='wind';
   $('clear').hidden=mode!=='csv';$('dates').hidden=n<2;
@@ -189,14 +194,32 @@ $('import').onchange=async e=>{
     const source=await file.text(),next=readCSV(source);if(req!==ticket)return;
     raw=source;const stored=put(storeKey+'-source',raw);
     if(!stored)try{localStorage.removeItem(storeKey+'-source')}catch{}
-    setMode(true,next);msg('已导入 '+next.length+' 行。'+(stored?'数据已保存在本浏览器。':'浏览器存储不足或不可用，仅在本页会话有效。'))
+    csvRows=next;setMode('csv',next);msg('已导入 '+next.length+' 行。'+(stored?'数据已保存在本浏览器。':'浏览器存储不足或不可用，仅在本页会话有效。'))
   }catch(err){if(req===ticket)msg(err.message||'无法读取 CSV。',true)}
 };
-$('clear').onclick=()=>{++ticket;try{localStorage.removeItem(storeKey+'-source')}catch{};raw=null;setMode(false,SNAPSHOT);msg('已切回 Wind 原图快照。')};
+$('clear').onclick=()=>{++ticket;try{localStorage.removeItem(storeKey+'-source')}catch{};raw=csvRows=null;setMode(csiRows?'csi':'wind',csiRows||SNAPSHOT);msg('已清除本地 CSV。')};
 function file(name,body){
   const a=document.createElement('a'),url=URL.createObjectURL(new Blob(['\uFEFF',body],{type:'text/csv;charset=utf-8'}));
   a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
 $('download').onclick=()=>file('erp-chart.csv',['date,code,pe_ttm,bond10y_pct,close,earnings_yield_pct,erp_pp,wind_source_percentile_pct,source',...plotted.map(r=>[r.date,r.code,r.pe,r.bond,r.close,r.ey,r.erp,r.sourcePct,mode].join(','))].join('\n')+'\n');
 $('template').onclick=()=>file('erp-template.csv','date,code,pe_ttm,bond10y_pct,close\n');
-$('wind').href=WIND;regroup();render();new ResizeObserver(draw).observe($('frame'));
+$('source').onchange=e=>{
+  ++ticket;
+  const key=e.target.value,next={wind:SNAPSHOT,csi:csiRows,csv:csvRows}[key];
+  if(next){setMode(key,next);msg()}
+};
+$('wind').href=WIND;syncPicker();regroup();render();new ResizeObserver(draw).observe($('frame'));
+const initialTicket=ticket;
+(async()=>{
+  try{
+    const res=await fetch('./data/csi.csv',{cache:'no-cache',signal:AbortSignal.timeout(10000)});
+    if(!res.ok)throw Error('HTTP '+res.status);
+    const next=readCSV(await res.text());
+    csiRows=next;
+    if(ticket===initialTicket&&mode==='wind')setMode('csi',next);
+    else syncPicker();
+  }catch{
+    if(ticket===initialTicket&&mode==='wind')msg('尚无可读取的中证自动数据，当前显示 Wind 原图快照。');
+  }
+})();

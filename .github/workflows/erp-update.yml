@@ -1,0 +1,131 @@
+name: 风险溢价 · 中证数据更新与发布
+
+on:
+  schedule:
+    - cron: '17 11 * * 1-5'  # 北京时间 19:17
+    - cron: '43 13 * * 1-5'  # 北京时间 21:43，兜底
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/erp-update.yml'
+      - 'a-share-erp-monitor/dist/**'
+      - 'a-share-erp-monitor/tools/**'
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: '可选回填结束日 YYYY-MM-DD（缺省为最新可用日）'
+        type: string
+        required: false
+      start_date:
+        description: '可选回填起始日 YYYY-MM-DD（单次最多 366 天）'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+concurrency:
+  group: strategy-pages
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: 校验逻辑与图表测试
+        working-directory: a-share-erp-monitor
+        run: |
+          python -m unittest discover -s tools -p 'test_*.py'
+          node --test verify.mjs
+      - name: 拉取并校验同日数据
+        env:
+          START: ${{ inputs.start_date }}
+          END: ${{ inputs.end_date }}
+        working-directory: a-share-erp-monitor
+        run: |
+          args=()
+          if [[ -n "$START" ]]; then args+=(--start "$START"); fi
+          if [[ -n "$END" ]]; then args+=(--end "$END"); fi
+          python tools/update_csi.py "${args[@]}"
+          node --input-type=module -e 'import {readCSV} from "./dist/core.mjs"; import {readFileSync} from "node:fs"; console.log("看板可读记录:", readCSV(readFileSync("dist/data/csi.csv", "utf8")).length)'
+      - uses: actions/upload-artifact@v6
+        with:
+          name: csi-validated
+          path: a-share-erp-monitor/dist/data/csi.csv
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      deploy: ${{ steps.commit.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/download-artifact@v7
+        with:
+          name: csi-validated
+          path: ${{ runner.temp }}/erp-validated
+      - name: 仅提交已校验的策略 CSV
+        id: commit
+        env:
+          VALIDATED: ${{ runner.temp }}/erp-validated
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$WORKFLOW_SHA" || {
+            echo "::error::main 已更新，重新运行以免覆盖新提交"
+            exit 1
+          }
+          target=a-share-erp-monitor/dist/data/csi.csv
+          mkdir -p "$(dirname "$target")"
+          cp "$VALIDATED/csi.csv" "$target"
+          git add -f -- "$target"
+          if git diff --cached --quiet; then
+            echo "无变化，不提交"
+            if [[ "$GITHUB_EVENT_NAME" != schedule ]]; then
+              echo "deploy=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore(erp): 更新中证股债利差数据'
+            git push origin HEAD:main
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 组装 Pages（仅发布静态入口和数据）
+        if: steps.commit.outputs.deploy == 'true'
+        run: |
+          mkdir -p site/a-share-erp-monitor
+          cp -R a-share-erp-monitor/dist site/a-share-erp-monitor/
+          cat > site/index.html <<'HTML'
+          <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>策略看板</title><main><h1>策略看板</h1><a href="./a-share-erp-monitor/dist/">A 股风险溢价看板</a></main></html>
+          HTML
+      - uses: actions/upload-pages-artifact@v4
+        if: steps.commit.outputs.deploy == 'true'
+        with:
+          path: site
+
+  deploy:
+    needs: commit
+    if: needs.commit.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: pages
