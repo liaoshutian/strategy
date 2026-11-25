@@ -11,6 +11,14 @@ export const SNAPSHOT=[
   {date:'2026-11-20',code:'000300',pe:null,ey:null,bond:null,erp:5.84,close:null,sourcePct:72.41}
 ];
 export const erp=(pe,bond)=>100/pe-bond;
+export function spreadBands(values){
+  if(!values.length)return {};
+  const mean=values.reduce((a,v)=>a+v,0)/values.length;
+  const sigma=Math.sqrt(values.reduce((a,v)=>a+(v-mean)**2,0)/values.length);
+  return {min:Math.min(...values),max:Math.max(...values),mean,
+    plus:values.length>1?mean+sigma:null,minus:values.length>1?mean-sigma:null,
+    z:values.length>1&&sigma>0?(values.at(-1)-mean)/sigma:null};
+}
 export const pct=(sample,value)=>{
   if(sample.length<2||!Number.isFinite(value))return null;
   let less=0,equal=0; for(const x of sample){if(Math.abs(x-value)<=1e-9)equal++;else if(x<value)less++}

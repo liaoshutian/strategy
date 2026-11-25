@@ -1,4 +1,4 @@
-import {META,SNAPSHOT,WIND,readCSV,stats,windowStart,zone} from './core.mjs';
+import {META,SNAPSHOT,WIND,readCSV,stats,windowStart,zone,spreadBands} from './core.mjs';
 const $=id=>document.getElementById(id), codes=Object.keys(META).sort((a,b)=>['000852','000905','000300'].indexOf(a)-['000852','000905','000300'].indexOf(b));
 const storeKey='cn-erp-monitor-v1', cv=$('plot'), ctx=cv.getContext('2d');
 const fmt=(x,n=2)=>Number.isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:n,maximumFractionDigits:n}):'—';
@@ -56,11 +56,27 @@ function rowStats(c){
   if(mode==='wind'&&s.last)return {...s,pct:s.last.sourcePct,median:META[c].median};
   return s
 }
+function renderReadouts(){
+  const s=rowStats(focus),r=s.last,l=limits(focus);
+  const w=mode==='wind'&&focus==='000852';
+  const band=w?{max:1.61,mean:-.07,min:-1.90,plus:.78,minus:-.92,z:1.54}:
+    mode==='wind'?{}:spreadBands(grouped[focus].filter(x=>x.date>=windowStart(dates[b],sample)&&x.date<=dates[b]).map(x=>x.erp));
+  const pp=v=>unit(v,' pp');
+  const items=[
+    ['风险溢价',pp(r?.erp),'emph'],['盈利收益率',unit(r?.ey,'%')],['10 年国债',unit(r?.bond,'%')],
+    [mode==='wind'?'原图分位':'样本分位',unit(s.pct,'%',2)],
+    ['危险线',pp(l?.[0]),'danger'],['中位数',pp(s.median)],['机会线',pp(l?.[1]),'chance'],
+    ['指数点位',fmt(r?.close)],['最大 / 最小',Number.isFinite(band.max)?fmt(band.max)+' / '+fmt(band.min)+' pp':'—'],
+    ['平均值',pp(band.mean)],['±1 标准差',Number.isFinite(band.plus)?fmt(band.plus)+' / '+fmt(band.minus)+' pp':'—'],
+    ['Z 分数',fmt(band.z)]
+  ];
+  $('chartReadouts').innerHTML=items.map(([name,value,cls=''])=>'<div class="'+cls+'"><dt>'+name+'</dt><dd>'+value+'</dd></div>').join('');
+}
 function render(){
   const n=dates.length;
-  $('dataset').textContent=mode==='wind'?'Wind 原图快照 · 2026-11-20':mode==='csi'?'中证自动数据 · '+rows.at(-1).date:'本地 CSV · '+rows.length.toLocaleString('zh-CN')+' 行';
+  $('dataset').textContent=mode==='wind'?'Wind 原图快照 · 2026-11-20':mode==='csi'?'中证重算 · '+rows.at(-1).date:'本地 CSV · '+rows.length.toLocaleString('zh-CN')+' 行';
   $('viewTitle').textContent=compare?'三指数风险溢价叠加':META[focus].name+'风险溢价';
-  $('viewSub').textContent=mode==='wind'?'仅内置同一天的 Wind 参考读数，未预置历史曲线，不自动更新。导入同口径 CSV 后可缩放、平移和计算历史分位。':dates[0]+' 至 '+dates.at(-1)+(mode==='csi'?' · 中证滚动 PE + 中证 10 年期国债到期收益率；数据截至实际观测日，非 Wind 口径。':' · 本地导入，不自动更新');
+  $('viewSub').textContent=mode==='wind'?'仅内置 11 月 20 日的 Wind 原图读数。原图历史曲线请点上方链接；未取得逐日 Wind 数据，不以其他来源补齐。':dates[0]+' 至 '+dates.at(-1)+(mode==='csi'?' · '+grouped[focus].length+' 个交易日 · 中证滚动 PE 与中证国债；分位不是原图的近十年分位。':' · 本地导入，不自动更新');
   $('compare').setAttribute('aria-pressed',compare);$('price').setAttribute('aria-pressed',prices);
   $('price').disabled=!grouped[focus].some(r=>r.close!=null);$('sample').disabled=mode==='wind';
   $('clear').hidden=mode!=='csv';$('dates').hidden=n<2;
@@ -74,17 +90,17 @@ function render(){
   $('rows').innerHTML=codes.map(c=>{
     const s=rowStats(c),r=s.last;return '<tr><td>'+META[c].name+'</td><td>'+(r?.date||'—')+'</td><td>'+fmt(r?.pe)+'</td><td>'+unit(r?.ey,'%')+'</td><td>'+unit(r?.bond,'%')+'</td><td>'+unit(r?.erp,' pp')+'</td><td>'+unit(s.pct,'%',2)+(mode==='wind'?'（原图）':(s.count?'（'+s.count+' 日）':''))+'</td></tr>'
   }).join('');
-  const items=visible.map(c=>[META[c].name,META[c].color]);if(prices&&rows.some(r=>r.code===focus&&r.close!=null))items.push([META[focus].name+'点位（右轴）','#d5b0ff']);if(limits(focus))items.push([META[focus].name+'阈值线','#84efbc']);
+  const items=visible.map(c=>[META[c].name,{'000852':'#087f97','000905':'#245db2','000300':'#aa640b'}[c]]);if(prices&&rows.some(r=>r.code===focus&&r.close!=null))items.push([META[focus].name+'点位（右轴）','#7354a4']);if(limits(focus))items.push([META[focus].name+'阈值线','#84efbc']);
   $('legend').innerHTML=items.map(([label,color])=>'<span class="key"><i class="dot" style="--c:'+color+'"></i>'+label+'</span>').join('');
-  renderControls(); draw()
+  renderReadouts();renderControls(); draw()
 }
-function label(v,x,y,color='#a9c0c4',align='left'){ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(v,x,y)}
+function label(v,x,y,color='#506776',align='left'){ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(v,x,y)}
 function draw(){
   const W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return;
   const dpr=Math.min(2,window.devicePixelRatio||1);
   if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);ctx.font='12px system-ui,sans-serif';ctx.lineJoin='round';
-  const x0=W<420?35:48,x1=W-(prices?55:16),y0=23,y1=H-36,start=dates[a],end=dates[b],single=a===b;
+  const x0=W<420?39:51,x1=W-(prices?62:16),y0=23,y1=H-36,start=dates[a],end=dates[b],single=a===b;
   const l=limits(focus),m=rowStats(focus).median;
   plotted=rows.filter(r=>visible.includes(r.code)&&r.date>=start&&r.date<=end);
   const values=plotted.map(r=>r.erp).concat(l||[],m===null?[]:[m],0).filter(Number.isFinite);
@@ -96,22 +112,37 @@ function draw(){
   let pl=ps.length?Math.min(...ps):0,ph=ps.length?Math.max(...ps):1;if(pl===ph){pl-=1;ph+=1}
   const py=v=>y1-(v-pl)/(ph-pl)*(y1-y0);
   geom={x0,x1,y0,y1,y,low,high,x,day,start,end};
-  if(l){ctx.fillStyle='#466a402b';ctx.fillRect(x0,y0,x1-x0,Math.max(0,y(l[1])-y0));ctx.fillStyle='#8f494830';ctx.fillRect(x0,y(l[0]),x1-x0,Math.max(0,y1-y(l[0])))}
+  if(l){ctx.fillStyle='#1292610d';ctx.fillRect(x0,y0,x1-x0,Math.max(0,y(l[1])-y0));ctx.fillStyle='#be32310d';ctx.fillRect(x0,y(l[0]),x1-x0,Math.max(0,y1-y(l[0])))}
   for(let i=0;i<=5;i++){
-    const yy=y0+i*(y1-y0)/5;ctx.beginPath();ctx.strokeStyle='#284450';ctx.lineWidth=1;ctx.moveTo(x0,yy+.5);ctx.lineTo(x1,yy+.5);ctx.stroke();
-    label(fmt(high-i*(high-low)/5,1),x0-7,yy+4,'#a9c0c4','right');
-    if(prices&&ps.length)label(fmt(ph-i*(ph-pl)/5,0),x1+4,yy+4,'#d5b0ff');
+    const yy=y0+i*(y1-y0)/5;ctx.beginPath();ctx.strokeStyle='#dce5e7';ctx.lineWidth=1;ctx.moveTo(x0,yy+.5);ctx.lineTo(x1,yy+.5);ctx.stroke();
+    label(fmt(high-i*(high-low)/5,1),x0-7,yy+4,'#506776','right');
+    if(prices&&ps.length)label(fmt(ph-i*(ph-pl)/5,0),x1+4,yy+4,'#7354a4');
   }
   const grid=single?[a]:[...new Set(Array.from({length:Math.min(W<480?4:6,b-a+1)},(_,i)=>Math.round(a+i*(b-a)/(Math.min(W<480?4:6,b-a+1)-1))))];
   for(const i of grid){
     const xx=single?x0+(x1-x0)/2:x(dates[i],focus);
-    label(single?start:(W<540?dates[i].slice(2):dates[i]),xx,y1+23,'#a9c0c4',i===a&&!single?'left':i===b&&!single?'right':'center')
+    label(single?start:(W<540?dates[i].slice(2):dates[i]),xx,y1+23,'#506776',i===a&&!single?'left':i===b&&!single?'right':'center')
   }
   function hline(value,color){
     if(!Number.isFinite(value))return;
     ctx.beginPath();ctx.setLineDash([6,5]);ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.moveTo(x0,y(value));ctx.lineTo(x1,y(value));ctx.stroke();ctx.setLineDash([])
   }
-  hline(0,'#55717a');hline(m,'#b4a6c7');if(l){hline(l[0],'#ff9c9b');hline(l[1],'#84efbc')}
+  // Area to zero, like the reference chart; gaps and single-day snapshots are not filled.
+  if(visible.length===1&&!single){
+    let group=[];
+    const fill=()=>{
+      if(group.length>1){
+        const first=group[0],last=group.at(-1);
+        ctx.beginPath();ctx.moveTo(x(first.date),y(0));
+        for(const p of group)ctx.lineTo(x(p.date),y(p.erp));
+        ctx.lineTo(x(last.date),y(0));ctx.closePath();ctx.fillStyle='#57b8c276';ctx.fill();
+      }
+      group=[];
+    };
+    for(const p of plotted){if(group.length&&day(p.date)-day(group.at(-1).date)>7)fill();group.push(p)}
+    fill();
+  }
+  hline(0,'#94a7ad');hline(m,'#71808c');if(l){hline(l[0],'#ad3033');hline(l[1],'#0d8058')}
   function series(pts,c,get,color){
     ctx.lineWidth=2;ctx.strokeStyle=color;ctx.fillStyle=color;const maxGapDays=7;
     let previous=null;
@@ -123,12 +154,13 @@ function draw(){
       previous=p
     }
   }
-  for(const c of visible)series(plotted.filter(r=>r.code===c),c,r=>y(r.erp),META[c].color);
-  if(prices)series(priceRows,focus,r=>py(r.close),'#d5b0ff');
+  const colors={'000852':'#087f97','000905':'#245db2','000300':'#aa640b'};
+  for(const c of visible)series(plotted.filter(r=>r.code===c),c,r=>y(r.erp),colors[c]);
+  if(prices)series(priceRows,focus,r=>py(r.close),'#7354a4');
   if(hover>=a&&hover<=b){
     const date=dates[hover], sel=plotted.filter(r=>r.date===date), hx=single?cursorX:x(date,focus);
-    if(!single){ctx.strokeStyle='#a9c0c4';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(hx,y0);ctx.lineTo(hx,y1);ctx.stroke()}
-    for(const p of sel){ctx.beginPath();ctx.fillStyle=META[p.code].color;ctx.arc(x(p.date,p.code),y(p.erp),4,0,2*Math.PI);ctx.fill()}
+    if(!single){ctx.strokeStyle='#506776';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(hx,y0);ctx.lineTo(hx,y1);ctx.stroke()}
+    for(const p of sel){ctx.beginPath();ctx.fillStyle=colors[p.code];ctx.arc(x(p.date,p.code),y(p.erp),4,0,2*Math.PI);ctx.fill()}
     const tp=$('tip');tp.textContent=date+'  '+sel.map(p=>META[p.code].name+' '+unit(p.erp,' pp')+(prices&&p.code===focus&&p.close!=null?' / '+fmt(p.close,2):'')).join(' · ');
     // Measure after revealing, then keep the bubble inside the plot at mobile sizes.
     tp.hidden=false;tp.style.left=Math.max(3,Math.min(W-tp.offsetWidth-3,hx+8))+'px';tp.style.top=Math.max(0,Math.min(H-40,cursorY-36))+'px';

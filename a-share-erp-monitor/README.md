@@ -27,3 +27,8 @@ python3 tools/merge_csv.py index.csv bond.csv erp-history.csv
 - `tools/update_csi.py` 从中证指数官网的指数表现接口取三个指数的滚动市盈率 `peg` 及 `close`，从[基金业协会中证产品页](https://www.amac.org.cn/sjtj/fwjgxxjcp/zzzs/)对应接口取中证国债到期收益率曲线 `Treasury Bond Term Structure` 的 10 年点。仅做同日匹配，日期按北京时间解读；三个指数和 10 年点齐备才写入 `dist/data/csi.csv`。数据使用与再发布须符合来源授权，不提交原始接口响应或私有数据。
 - 首次默认拉最近 45 个自然日；之后覆盖最近已知观测日往前 9 天至最新可查日期，以补齐错过的日子及修订。近月以外的历史可在有权使用时指定 `start_date` 与 `end_date` 分段回填；每次相差不超过 366 天，历史补录不覆盖区间之外的数据。页面不补缺口、不把样本区间冒充完整 Wind 历史。
 - 本地校验：`python -m unittest discover -s tools`、`node --test verify.mjs`。本地刷新：`python tools/update_csi.py`，可加 `--start YYYY-MM-DD --end YYYY-MM-DD`。测试使用模拟上游，不向 Git 写入。Pages 需选择 GitHub Actions 发布源；本 workflow 直接部署制品，不依赖 bot commit 触发另一条 workflow。
+
+
+## 与李蓓原图对照
+
+图表按单指数展示零轴面积、左侧统计及危险／中位／机会参考线，支持指数点位右轴。上方「对照李蓓发布的原图」打开半夏转载图。中证模式使用实际可用样本，分位不可与 Wind 原图的长期分位直接对比；Wind 模式仅呈现有证据的原图快照读数，不重画历史轨迹。中证的 ±1 标准差为当前分位样本的均值 ± 总体标准差，不与原图统计混用。
