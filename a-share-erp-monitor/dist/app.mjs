@@ -1,4 +1,4 @@
-import {META,SNAPSHOT,WIND,WIND_BANDS,readCSV,stats,windowStart,zone,spreadBands} from './core.mjs';
+import {META,SNAPSHOT,WIND,WIND_BANDS,readCSV,stats,windowStart,zone,spreadBands} from './core.mjs?v=wind-compare-2';
 const $=id=>document.getElementById(id), codes=Object.keys(META).sort((a,b)=>['000852','000905','000300'].indexOf(a)-['000852','000905','000300'].indexOf(b));
 const storeKey='cn-erp-monitor-v1', cv=$('plot'), ctx=cv.getContext('2d');
 const fmt=(x,n=2)=>Number.isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:n,maximumFractionDigits:n}):'—';
