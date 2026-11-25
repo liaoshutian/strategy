@@ -8,3 +8,8 @@
 @media(max-width:24rem){.readouts dl{grid-template-columns:minmax(0,1fr)}}
 :where(.intro,.top,.bar,.time)>*{min-inline-size:0;max-inline-size:100%}
 :where(button,.status,label,summary,code){overflow-wrap:anywhere}
+/* Native form controls must fit both narrow screens and enlarged user text. */
+:where(select,input[type=date],input[type=number]){max-inline-size:100%}
+.sliders{grid-template-columns:repeat(2,minmax(0,1fr))}
+.control{min-inline-size:0}
+@media(max-width:24rem){.sliders{grid-template-columns:minmax(0,1fr)}}
