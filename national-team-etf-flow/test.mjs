@@ -1,18 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {WINDOWS,ratio,sma,rolling,snapshot} from './dist/model.mjs';
+import {ratio,rolling,snapshot} from './dist/model.mjs';
 
-test('均线只使用完整交易日窗口；缺值不会补零',()=>{
-  assert.deepEqual(sma([2,4,null,6,8],2),[null,3,null,null,7]);
-  for(const n of WINDOWS){
-    const v=Array.from({length:205},(_,i)=>i+1);
-    const actual=sma(v,n);
-    assert.equal(actual[n-2],null);
-    assert.equal(actual[n-1],(n+1)/2);
-    assert.equal(actual.at(-1),(206+205-n)/2);
-  }
-});
 test('滚动净申赎保留负值；基数缺失不制作百分比',()=>{
   assert.equal(rolling([10,-5,-2],2),-7);
   assert.equal(rolling([null,-2],2),null);
@@ -28,7 +18,8 @@ test('全历史峰值与窗口独立，周月使用最近 5 / 21 日净申赎',(
   assert.equal(s.level,50);
   assert.equal(s.weekStrength,-10);
   assert.equal(s.monthStrength,-42);
-  assert.deepEqual(s.baselines.map(r=>r[0]),['MA10','MA20','MA30','MA60','MA200','历史峰值']);
+  assert.equal(s.peak,100);
+  assert.equal(ratio(s.peak,s.peak),100);
 });
 test('已发布数据同日对齐，整页可用',()=>{
   const load=name=>JSON.parse(readFileSync(new URL('./dist/data/'+name,import.meta.url)));
@@ -43,5 +34,5 @@ test('已发布数据同日对齐，整页可用',()=>{
     assert.equal(rows.length,data.dates.length);
     if(i===0) assert.deepEqual(rows.map(r=>r[0]),data.flow);
   }
-  assert.ok(snap.baselines.every(r=>r[0]&&r[1]>0&&r[2]>0));
+  assert.equal(snap.peak,Math.max(...data.holdings.filter(Number.isFinite)));
 });

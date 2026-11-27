@@ -1,11 +1,10 @@
-import {WINDOWS,snapshot,rolling} from './model.mjs';
+import {snapshot,rolling,ratio} from './model.mjs';
 const $=id=>document.getElementById(id);
 const money=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const signed=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:'exceptZero'});
 const fmt=(v,s=false)=>Number.isFinite(v)?(s?signed:money).format(v):'—';
 const pct=(v,s=false)=>v===null?'—':fmt(v,s)+'%';
 const tone=v=>v>0?'pos':v<0?'neg':'';
-const ink=['#225cb0','#b23d37','#a55d0a','#167265','#7e3ca3','#586774'];
 const nspace='http://www.w3.org/2000/svg';
 
 function elt(tag,txt,attrs={}){
@@ -24,9 +23,12 @@ function row(host,cells){
   const tr=elt('tr',null);host.append(tr);
   cells.forEach((c,i)=>tr.append(Array.isArray(c)?elt(i?'td':'th',c[0],i?{class:c[1]}:{scope:'row'}):elt(i?'td':'th',c,i?{}:{scope:'row'})));
 }
-function card(host,label,value,caption,sty='',lead=false){
-  const el=elt('article',null,{class:'card'+(lead?' lead':'')});
-  el.append(elt('p',label),elt('strong',value,{class:sty}),elt('p',caption)); host.append(el);
+function card(host,label,value,caption,sty='',lead=false,unit=''){
+  const el=elt('article',null,{class:'card'+(lead?' lead':'')+(unit?' metric-card':'')});
+  const number=elt('strong',value,{class:sty});
+  const metric=unit?elt('p',null,{class:'metric-value'}):number;
+  if(unit)metric.append(number,' ',elt('span',unit,{class:'metric-unit'}));
+  el.append(elt('p',label,{class:'card-label'}),metric,elt('p',caption)); host.append(el);
 }
 function chart(host,title){
   const w=Math.max(host.clientWidth,200),h=Math.max(host.clientHeight,120);
@@ -37,12 +39,13 @@ function chart(host,title){
 function line(root,x1,y1,x2,y2,attrs={}){
   return svg(root,'line',{x1,y1,x2,y2,stroke:'#d2dfe5',...attrs});
 }
-function axes(c,min,max,top,bottom){
+function axes(c,min,max,top,bottom,peak=null){
   const scale=v=>bottom-(v-min)/(max-min)*(bottom-top);
   for(let i=0;i<=4;i++){
     const v=min+(max-min)*i/4,y=scale(v);
     line(c.root,c.left,y,c.right,y);
     svg(c.root,'text',{x:c.left-6,y:y+4,'text-anchor':'end'},Math.round(v).toLocaleString('zh-CN'));
+    if(peak>0)svg(c.root,'text',{class:'peak-axis-tick',x:c.right+6,y:y+4},Math.round(ratio(v,peak))+'%');
   }
   return scale;
 }
@@ -101,7 +104,7 @@ function setup(market){
   $('stamp').textContent='数据日 '+market.asOf+' · '+market.funds.length+' 只 ETF · 全市场资金流代理';
   $('coverage').textContent=s.holdDates[0]+' 至 '+market.asOf+' · 最长 '+s.holdDates.length+' 个交易日 · 亿元';
   const cards=$('cards');
-  card(cards,'最新交易日 · 净申赎',fmt(market.flow.at(-1),true),market.asOf+' · 亿元',tone(market.flow.at(-1)));
+  card(cards,'最新交易日 · 净申赎',fmt(market.flow.at(-1),true),market.asOf,tone(market.flow.at(-1)),false,'亿元');
   card(cards,'近一周净申赎',fmt(s.week,true),'最近 5 个交易日 · 亿元',tone(s.week));
   card(cards,'近一月净申赎',fmt(s.month,true),'最近 21 个交易日 · 亿元',tone(s.month));
   for(const [name,v] of [['近半年 · 120 日',rolling(market.flow,120)],['近一年 · 242 日',rolling(market.flow,242)],['今年以来',rolling(market.flow,market.dates.filter(d=>d.slice(0,4)===market.asOf.slice(0,4)).length)]]){
@@ -111,37 +114,28 @@ function setup(market){
   card(positions,'持仓水位 · 当前 / 历史峰值',pct(s.level),fmt(s.current)+' / '+fmt(s.peak)+' 亿元', '',true);
   card(positions,'近一周加仓力度 · 5 个交易日',pct(s.weekStrength,true),fmt(s.week,true)+' 亿元净申赎 / 峰值',tone(s.week),true);
   card(positions,'近一月加仓力度 · 21 个交易日',pct(s.monthStrength,true),fmt(s.month,true)+' 亿元净申赎 / 峰值',tone(s.month),true);
-  s.baselines.forEach(([name,v,p])=>row($('ratios'),[name+(name==='历史峰值'?' · '+s.peakDate:''),fmt(v),pct(p)]));
-  const visible=[true,true,true,true,true,true];
-  const series=[market.holdings,...s.ma], labels=['持仓金额',...WINDOWS.map(n=>'MA'+n)];
-  labels.forEach((label,i)=>{
-    const check=elt('input',null,{type:'checkbox'});
-    check.checked=true;
-    const swatch=elt('span','',{class:'swatch',style:'--stroke:'+ink[i],'aria-hidden':'true'});
-    const opt=elt('label',null);
-    opt.append(check,swatch,label);$('legend').append(opt);
-    check.addEventListener('change',()=>{visible[i]=check.checked;drawHold();});
-  });
+  row($('ratios'),['历史峰值'+(s.peakDate?' · '+s.peakDate:''),fmt(s.peak),pct(s.level)]);
   function drawHold(){
-    const c=chart($('hold-chart'),'累计持仓金额和简单均线图');
+    const c=chart($('hold-chart'),'累计持仓金额，左轴亿元，右轴为历史峰值比例');
+    const peak=s.peak>0?s.peak:null,top=28;
+    if(peak!==null)c.right=c.w-45;
+    svg(c.root,'text',{x:c.left-6,y:12,'text-anchor':'end'},'亿元');
+    if(peak!==null)svg(c.root,'text',{x:c.w-2,y:12,'text-anchor':'end'},'峰值比例');
     const count=Number($('hold-range').value)||s.holdDates.length;
     const start=Math.max(0,s.holdDates.length-count),dates=s.holdDates.slice(start),end=c.h-26;
     const x=i=>c.left+i*(c.right-c.left)/Math.max(1,dates.length-1);
-    const [min,max]=limits(series.flatMap((xs,i)=>visible[i]?xs.slice(start):[]));
-    const y=axes(c,min,max,12,end);
+    const [min,max]=peak===null?limits(market.holdings.slice(start)):[0,peak];
+    const y=axes(c,min,max,top,end,peak);
     datesAxis(c,dates,x,c.h-6);
-    series.forEach((xs,j)=>{
-      if(!visible[j])return;
-      let d='', seen=false;
-      xs.slice(start).forEach((v,i)=>{
-        if(!Number.isFinite(v)){seen=false;return;}
-        d+=(seen?'L':'M')+x(i).toFixed(1)+','+y(v).toFixed(1);seen=true;
-      });
-      svg(c.root,'path',{d,fill:'none',stroke:ink[j],'stroke-width':j===0?2.15:1.35,
-        'stroke-dasharray':['','5 2','3 2','8 3','2 3','9 2 2 2'][j]});
+    let d='',seen=false;
+    market.holdings.slice(start).forEach((v,i)=>{
+      if(!Number.isFinite(v)){seen=false;return;}
+      d+=(seen?'L':'M')+x(i).toFixed(1)+','+y(v).toFixed(1);seen=true;
     });
-    track(c,$('hold-day'),dates.length,x,12,end,i=>{
-      const str=dates[i]+' · '+labels.flatMap((n,j)=>visible[j]?[n+' '+fmt(series[j][start+i])]:[]).join('　');
+    svg(c.root,'path',{d,fill:'none',stroke:'#225cb0','stroke-width':2.15});
+    track(c,$('hold-day'),dates.length,x,top,end,i=>{
+      const value=market.holdings[start+i],level=ratio(value,peak);
+      const str=dates[i]+' · 持仓金额 '+fmt(value)+(Number.isFinite(value)?' 亿元':'')+(level===null?'':'（'+pct(level)+'）');
       $('hold-read').textContent=str;return str;
     });
   }
