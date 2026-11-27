@@ -16,6 +16,8 @@
 ## 当前策略
 - `a-share-erp-monitor/`：沪深300、中证500、中证1000的股债利差。中证 PE-TTM 与中证国债 10 年到期收益率按同一观测日对齐，不冒充 Wind，也不套用 Wind 阈值。Wind 原图快照与本地导入均独立保留。
 
+- `national-team-etf-flow/`：宽基 ETF 持仓规模相对历史峰值、均线和滚动净申赎。依据上游公开数值独立实现，不是汇金实际仓位。各策略部署统一使用 `.github/scripts/build-pages.sh`，防止同一个 Pages 站点互相覆盖。
+
 ## 网页设计与可访问性
 - 前端改动前查阅 [Modern Web Guidance](https://developer.chrome.com/docs/modern-web-guidance/get-started)，可在项目目录运行 `DISABLE_TELEMETRY=1 npx modern-web-guidance@latest install`，并检索适用指南。它是开发参考，不引入网页运行时依赖。
 - 数据看板用紧凑的信息层级，不用大号宣传页标题。字号用 `rem` 与有限范围的 `clamp()`，行高用无单位倍数；不锁定根字号或禁用缩放。精简视觉大小时保留点击区域，文字可换行，数据表允许在自身容器横向滚动。

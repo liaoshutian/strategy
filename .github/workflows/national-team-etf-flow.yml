@@ -1,0 +1,112 @@
+name: 宽基 ETF · 数据更新与发布
+
+on:
+  schedule:
+    - cron: '13 8 * * 1-5'   # 北京时间 16:13
+    - cron: '24 16 * * 1-5'  # 北京时间周二至周六 00:24
+    - cron: '37 1 * * 1-6'   # 北京时间 09:37，补上前一个交易日晚发数据
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/national-team-etf-flow.yml'
+      - '.github/scripts/build-pages.sh'
+      - 'national-team-etf-flow/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: strategy-pages
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: national-team-etf-flow
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: 导入并校验公开数据
+        run: |
+          python -m unittest discover -s tools -p 'test_*.py'
+          python tools/update.py
+          node --test test.mjs
+      - uses: actions/upload-artifact@v6
+        with:
+          name: etf-validated
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            national-team-etf-flow/dist/data/market.json
+            national-team-etf-flow/dist/data/index-*.json
+
+  commit:
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: write
+    outputs:
+      deploy: ${{ steps.save.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/download-artifact@v7
+        with:
+          name: etf-validated
+          path: ${{ runner.temp }}/etf-validated
+      - name: 仅提交已校验的 ETF 数据
+        id: save
+        env:
+          VALIDATED: ${{ runner.temp }}/etf-validated
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$WORKFLOW_SHA" || {
+            echo "::error::main 已更新，请在新提交重新运行，避免覆盖"
+            exit 1
+          }
+          target=national-team-etf-flow/dist/data
+          mkdir -p "$target"
+          cp "$VALIDATED/market.json" "$VALIDATED"/index-*.json "$target/"
+          git add -- "$target/market.json" "$target"/index-*.json
+          if git diff --cached --quiet; then
+            echo "源数据无变化，不提交"
+            if [[ "$GITHUB_EVENT_NAME" != schedule ]]; then
+              echo "deploy=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore(etf): 更新宽基 ETF 持仓与净申赎'
+            git push origin HEAD:main
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 组装共用 Pages
+        if: steps.save.outputs.deploy == 'true'
+        run: bash .github/scripts/build-pages.sh site
+      - uses: actions/upload-pages-artifact@v4
+        if: steps.save.outputs.deploy == 'true'
+        with:
+          path: site
+
+  deploy:
+    needs: commit
+    if: needs.commit.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: pages

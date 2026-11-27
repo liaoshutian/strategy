@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="宽基 ETF 持仓水位、资金净申赎与历史均线">
+  <title>宽基 ETF · 持仓水位</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body><main>
+  <header class="masthead">
+    <div><a href="../../">策略看板</a><h1>宽基 ETF · 持仓水位</h1>
+    <p id="stamp" role="status">正在读取已校验数据…</p></div>
+    <a href="https://wwww1998.github.io/national-team-etf-flow/">数据来源 ↗</a>
+  </header>
+  <p class="notice">「持仓」指样本 ETF 的全市场资产规模（份额 × 单位净值），会随价格变动；「加仓力度」指全市场净申赎相对历史持仓峰值的比例，两者均非汇金实际仓位或买卖。</p>
+  <noscript><p>请启用 JavaScript 查看交互图表。</p></noscript>
+  <div id="report" hidden>
+    <section aria-label="持仓及净申赎摘要">
+      <div class="cards" id="cards"></div>
+      <details class="periods"><summary>更多期间净申赎</summary><div class="cards" id="periods"></div></details>
+    </section>
+    <section class="panel" aria-labelledby="hold-title">
+      <div class="section-head"><div><h2 id="hold-title">累计持仓金额</h2><p id="coverage"></p></div>
+      <label>图表范围 <select id="hold-range"><option value="0">全部</option><option value="250">250 日</option><option value="120">120 日</option><option value="60">60 日</option></select></label></div>
+      <div id="legend" class="legend" role="group" aria-label="显示持仓均线"></div>
+      <div class="chart" id="hold-chart"></div>
+      <div class="reading"><output id="hold-read"></output>
+        <label>查看交易日 <input type="range" id="hold-day" min="0" step="1"></label></div>
+      <h3>最新持仓比例</h3>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="最新持仓比例">
+        <table><thead><tr><th scope="col">参照</th><th scope="col">参照值（亿元）</th><th scope="col">当前 / 参照</th></tr></thead><tbody id="ratios"></tbody></table>
+      </div>
+      <p>MA 为截至数据日最近 N 个交易日持仓金额的简单平均；不足 N 日或窗口中有缺值不计算。峰值取原站完整发布序列的最高值，不随图表范围改变。原站历史各日的基金可用性不一，不能当成全历史固定份额样本。</p>
+    </section>
+    <section class="panel" aria-labelledby="flow-title"><h2 id="flow-title">全篮子净申赎 · 近 21 个交易日</h2><p>单位：亿元。横线为零，红色净申购，绿色净赎回。</p><div id="daily-chart" class="chart"></div></section>
+    <section class="panel" aria-labelledby="index-title"><div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>上方为指数日 K 线，下方为对应样本的净申赎（亿元）。</p></div><div class="controls"><label>指数 <select id="index-select"></select></label><label>范围 <select id="index-range"><option value="60">60 日</option><option value="120" selected>120 日</option><option value="250">250 日</option><option value="0">全部</option></select></label></div></div>
+      <div id="index-chart" class="chart"></div><div class="reading"><output id="index-read"></output><label>查看交易日 <input type="range" id="index-day" min="0" step="1"></label></div>
+    </section>
+    <section class="panel" aria-labelledby="fund-title"><h2 id="fund-title">分品种资金流</h2><p>金额单位：亿元；份额单位：亿份；按 21 个交易日净申赎排序。</p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="ETF 资金流汇总"><table><thead><tr><th scope="col">ETF</th><th scope="col">最新份额</th><th scope="col">今日</th><th scope="col">近一周</th><th scope="col">近一月</th></tr></thead><tbody id="funds"></tbody></table></div>
+      <details><summary>近 10 个交易日逐日明细</summary><div class="table-scroll" tabindex="0" role="region" aria-label="ETF 每日净申赎明细"><table><thead id="matrix-head"></thead><tbody id="matrix"></tbody></table></div></details>
+    </section>
+  </div>
+</main></body></html>
