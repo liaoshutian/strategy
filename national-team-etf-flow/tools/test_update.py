@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from update import exported, update, validate_dates
+from update import daily_cell, exported, update, validate_dates
 
 
 class UpdateTests(unittest.TestCase):
@@ -13,6 +13,18 @@ class UpdateTests(unittest.TestCase):
             exported("const YPT=[alert(1)];", "YPT")
         with self.assertRaises(ValueError):
             exported("const YPT=[];\nconst YPT=[];", "YPT")
+
+    def test_amount_and_multiple_are_independent_and_zero_is_not_missing(self):
+        for src, expected in (
+            ("0+131.83倍", [0, 131.83]),
+            ("0+0.00倍", [0, 0]),
+            ("-2.43亿-7.48倍", [-2.43, -7.48]),
+            ("+1,000.00亿", [1000, None]),
+            ("—", [None, None]),
+        ):
+            self.assertEqual(daily_cell(src), expected)
+        with self.assertRaises(ValueError):
+            daily_cell("123倍")
 
     def test_bad_dates(self):
         for dates in (["2026-11-27", "2026-11-26"], ["2026-11-26"] * 2, ["2026-11-21"]):

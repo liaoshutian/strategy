@@ -12,7 +12,7 @@
   <header class="masthead">
     <div><a href="../../">策略看板</a><h1>宽基 ETF · 持仓水位</h1>
     <p id="stamp" role="status">正在读取已校验数据…</p></div>
-    <a href="https://wwww1998.github.io/national-team-etf-flow/">数据来源 ↗</a>
+    <div class="controls"><button id="refresh" type="button">刷新数据</button><a href="https://wwww1998.github.io/national-team-etf-flow/">数据来源 ↗</a></div>
   </header>
   <p class="notice">「持仓」指样本 ETF 的全市场资产规模（份额 × 单位净值），会随价格变动；「加仓力度」指全市场净申赎相对历史持仓峰值的比例，两者均非汇金实际仓位或买卖。</p>
   <noscript><p>请启用 JavaScript 查看交互图表。</p></noscript>
@@ -23,6 +23,7 @@
     <section aria-label="持仓水位及加仓力度">
       <div class="cards position-cards" id="position-cards"></div>
     </section>
+    <section class="panel" aria-labelledby="flow-title"><h2 id="flow-title">全篮子净申赎 · 近 21 个交易日</h2><p>单位：亿元。横线为零，红色净申购，绿色净赎回。</p><div class="table-scroll" tabindex="0" role="region" aria-label="近 21 日净申赎图"><div id="daily-chart" class="chart"></div></div></section>
     <section class="panel" aria-labelledby="hold-title">
       <div class="section-head"><div><h2 id="hold-title">累计持仓金额</h2><p id="coverage"></p></div>
       <label>图表范围 <select id="hold-range"><option value="0">全部</option><option value="250">250 日</option><option value="120">120 日</option><option value="60">60 日</option></select></label></div>
@@ -35,13 +36,41 @@
       </div>
       <p>右轴以完整历史持仓峰值为 100%，切换图表范围不改变基准。原站历史各日的基金可用性不一，不能当成全历史固定份额样本。</p>
     </section>
-    <section class="panel" aria-labelledby="flow-title"><h2 id="flow-title">全篮子净申赎 · 近 21 个交易日</h2><p>单位：亿元。横线为零，红色净申购，绿色净赎回。</p><div id="daily-chart" class="chart"></div></section>
-    <section class="panel" aria-labelledby="index-title"><div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>上方为指数日 K 线，下方为对应样本的净申赎（亿元）。</p></div><div class="controls"><label>指数 <select id="index-select"></select></label><label>范围 <select id="index-range"><option value="60">60 日</option><option value="120" selected>120 日</option><option value="250">250 日</option><option value="0">全部</option></select></label></div></div>
-      <div id="index-chart" class="chart"></div><div class="reading"><output id="index-read"></output><label>查看交易日 <input type="range" id="index-day" min="0" step="1"></label></div>
+    <section class="panel" aria-labelledby="index-title">
+      <div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>默认中证全指；切换指数可看对应 ETF 的净申赎。上方为日 K 线，下方为净申赎（亿元）。</p></div>
+      <label>指数 <select id="index-select"></select></label></div>
+      <div class="range-buttons" role="group" aria-label="指数图表范围">
+        <button type="button" data-days="60" aria-pressed="false">60 日</button>
+        <button type="button" data-days="120" aria-pressed="true">120 日</button>
+        <button type="button" data-days="250" aria-pressed="false">250 日</button>
+        <button type="button" data-days="0" aria-pressed="false">全部</button>
+      </div>
+      <div id="index-chart" class="chart"></div>
+      <div class="reading"><output id="index-read"></output><label>查看交易日 <input type="range" id="index-day" min="0" step="1"></label></div>
+      <div class="zoom-controls" role="group" aria-label="指数图表缩放与平移">
+        <label>起始日 <input type="range" id="index-start" min="0" step="1"></label>
+        <label>结束日 <input type="range" id="index-end" min="0" step="1"></label>
+        <p id="index-window"></p>
+      </div>
+      <p>可用滑杆调整区间，或在图上拖动平移、按住 Shift 滚动缩放。</p>
     </section>
-    <section class="panel" aria-labelledby="fund-title"><h2 id="fund-title">分品种资金流</h2><p>金额单位：亿元；份额单位：亿份；按 21 个交易日净申赎排序。</p>
-      <div class="table-scroll" tabindex="0" role="region" aria-label="ETF 资金流汇总"><table><thead><tr><th scope="col">ETF</th><th scope="col">最新份额</th><th scope="col">今日</th><th scope="col">近一周</th><th scope="col">近一月</th></tr></thead><tbody id="funds"></tbody></table></div>
-      <details><summary>近 10 个交易日逐日明细</summary><div class="table-scroll" tabindex="0" role="region" aria-label="ETF 每日净申赎明细"><table><thead id="matrix-head"></thead><tbody id="matrix"></tbody></table></div></details>
+    <section class="panel" aria-labelledby="fund-title"><h2 id="fund-title">分品种净申赎汇总</h2>
+      <p>按指数分组，组内按近一月净申赎排序。金额单位亿元，份额单位亿份。</p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="ETF 净申赎汇总"><table><thead><tr><th scope="col">ETF</th><th scope="col">最新份额</th><th scope="col">今日</th><th scope="col">近一周</th><th scope="col">近一月</th><th scope="col">近一月强度</th></tr></thead><tbody id="funds"></tbody></table></div>
+      <p>篮子标签沿用上游分类：「2025 末汇金持仓」为基础口径，「2026.10 救市」为后续纳入品种。标签不代表实时持仓。</p>
     </section>
+    <section class="panel" aria-labelledby="group-title"><h2 id="group-title">同类指数归集汇总</h2>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="同类指数归集汇总"><table><thead><tr><th scope="col">指数类别</th><th scope="col">今日</th><th scope="col">近一周</th><th scope="col">近一月</th><th scope="col">2025-12-31 份额（亿份）</th><th scope="col">2025-12-31 市值（亿元）</th><th scope="col">最新份额（亿份）</th><th scope="col">最新市值（亿元）</th><th scope="col">近一月强度</th></tr></thead><tbody id="groups"></tbody></table></div>
+      <p>同一指数下的 ETF 合并显示，资金流单位为亿元。强度条只是净申赎量级，以单品种 50 亿元、指数类别 200 亿元为满格，不是相对峰值的加仓比例。</p>
+    </section>
+    <section class="panel" aria-labelledby="fund-daily-title"><h2 id="fund-daily-title">分品种逐日明细 · 最近 10 个交易日</h2>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="分品种每日净申赎明细"><table class="matrix"><thead id="matrix-head"></thead><tbody id="matrix"></tbody></table></div>
+      <p>上行为净申赎金额（亿元）；下行为净申赎份额 ÷（该 ETF 2025-12-31 份额 × 0.1%）。未提供倍量不填零。</p>
+    </section>
+    <section class="panel" aria-labelledby="group-daily-title"><h2 id="group-daily-title">同类指数逐日明细 · 最近 10 个交易日</h2>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="同类指数每日净申赎明细"><table class="matrix"><thead id="group-matrix-head"></thead><tbody id="group-matrix"></tbody></table></div>
+      <p>上行为净申赎金额（亿元）；下行为净申赎金额 ÷（该类 ETF 的 2025-12-31 市值 × 0.1%）。原站金额与倍量均按公布值分别显示。</p>
+    </section>
+    <footer class="notice">净申赎估算 =（当日 ETF 份额 − 前一交易日份额）× 当日单位净值。净申赎不是盘中成交，基金规模也不是特定机构的实际仓位。</footer>
   </div>
 </main></body></html>

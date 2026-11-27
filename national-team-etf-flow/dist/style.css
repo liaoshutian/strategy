@@ -41,3 +41,20 @@ summary{cursor:pointer;min-height:2.6rem;padding:.55rem 0;color:#164f91}
 @media(max-width:38rem){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.position-cards .card:first-child{grid-column:1/-1}.card{padding:.5rem}.section-head{align-items:baseline}}
 @media(max-width:22rem){.metric-card{grid-column:1/-1}}
 @media(max-width:20rem){th,td{padding:.3rem}}
+button{font:inherit;color:var(--ink);min-height:2.5rem;padding:.3rem .65rem;border:1px solid #91a7ae;border-radius:.35rem;background:var(--surface);cursor:pointer}
+button[aria-pressed="true"]{border-color:var(--blue);color:#154c93;background:#edf4ff}
+.masthead .controls{align-items:center}
+.range-buttons,.zoom-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem}
+.range-buttons{margin-block:.55rem}
+.zoom-controls{margin-block:.2rem}
+.zoom-controls label{display:flex;align-items:center;gap:.25rem}
+#index-chart{cursor:grab;user-select:none}
+#index-chart:active{cursor:grabbing}
+#daily-chart{min-width:44rem}
+.fund-label{font-weight:500}
+.exchange,.fund-code,.tag{display:inline-block;font-size:.75rem;color:var(--muted)}
+.exchange,.tag{background:#edf4f6;padding:.02rem .32rem;border-radius:.3rem}
+.group-row th{background:#edf4f6;font-weight:600}
+.matrix small{display:block;font-size:.74rem}
+meter{width:4.5rem;height:.7rem;accent-color:currentColor}
+meter::-webkit-meter-optimum-value{background:currentColor}

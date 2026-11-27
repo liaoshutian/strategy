@@ -21,7 +21,7 @@ function svg(parent,tag,attrs={},text=null){
 }
 function row(host,cells){
   const tr=elt('tr',null);host.append(tr);
-  cells.forEach((c,i)=>tr.append(Array.isArray(c)?elt(i?'td':'th',c[0],i?{class:c[1]}:{scope:'row'}):elt(i?'td':'th',c,i?{}:{scope:'row'})));
+  cells.forEach((c,i)=>tr.append(c instanceof Node?c:Array.isArray(c)?elt(i?'td':'th',c[0],i?{class:c[1]}:{scope:'row'}):elt(i?'td':'th',c,i?{}:{scope:'row'})));
 }
 function card(host,label,value,caption,sty='',lead=false,unit=''){
   const el=elt('article',null,{class:'card'+(lead?' lead':'')+(unit?' metric-card':'')});
@@ -99,9 +99,11 @@ async function get(path){
   if(!r.ok) throw Error('HTTP '+r.status);
   return r.json();
 }
+$('refresh').addEventListener('click',()=>location.reload());
 function setup(market){
+  if(market.schema!==2||!market.groups||!market.matrixOrder)throw Error('data schema mismatch');
   const s=snapshot(market);
-  $('stamp').textContent='数据日 '+market.asOf+' · '+market.funds.length+' 只 ETF · 全市场资金流代理';
+  $('stamp').textContent='数据日 '+market.asOf+' · '+market.funds.length+' 只 ETF · 全市场净申赎 · 快照源更新时间 '+market.sourceUpdatedAt+'（北京时间）';
   $('coverage').textContent=s.holdDates[0]+' 至 '+market.asOf+' · 最长 '+s.holdDates.length+' 个交易日 · 亿元';
   const cards=$('cards');
   card(cards,'最新交易日 · 净申赎',fmt(market.flow.at(-1),true),market.asOf,tone(market.flow.at(-1)),false,'亿元');
@@ -143,11 +145,56 @@ function setup(market){
     const c=chart($('daily-chart'),'近 21 个交易日净申购与净赎回');
     const dates=market.dates.slice(-21),flow=market.flow.slice(-21);
     const x=i=>c.left+(i+.5)*(c.right-c.left)/dates.length;
-    flowBars(c,flow,14,c.h-25,x); datesAxis(c,dates,x,c.h-6);
+    flowBars(c,flow,14,c.h-25,x);
+    dates.forEach((date,i)=>{
+      const g=svg(c.root,'g');
+      svg(g,'title',{},date+' · '+fmt(flow[i],true)+' 亿元');
+      svg(g,'rect',{x:x(i)-(c.right-c.left)/dates.length/2,y:10,width:(c.right-c.left)/dates.length,height:c.h-11,fill:'transparent'});
+      svg(g,'text',{x:x(i),y:c.h-6,'text-anchor':'middle'},date.slice(5));
+    });
   }
   const select=$('index-select');
   market.indices.forEach((name,i)=>select.append(elt('option',name,{value:i})));
+  const last=market.dates.length-1, begin=$('index-start'), finish=$('index-end');
+  const rangeButtons=[...document.querySelectorAll('[data-days]')], indexHost=$('index-chart');
+  let lookback=120, lo=Math.max(0,last-119), hi=last, plot=null, drag=null, redrawFrame=0;
   let indexRows=null, request=0;
+  begin.max=finish.max=last;
+  function setWindow(first,end,preset=null){
+    const len=Math.min(last+1,Math.max(Math.min(5,last+1),end-first+1));
+    lo=Math.min(last+1-len,Math.max(0,Math.round(first)));
+    hi=lo+len-1;
+    lookback=preset;
+    if(redrawFrame)cancelAnimationFrame(redrawFrame);
+    redrawFrame=requestAnimationFrame(()=>{redrawFrame=0;drawIndex();});
+  }
+  rangeButtons.forEach(b=>b.addEventListener('click',()=>{
+    const n=Number(b.dataset.days);setWindow(n?Math.max(0,last+1-n):0,last,n);
+  }));
+  begin.addEventListener('input',()=>setWindow(Math.min(+begin.value,hi-4),hi));
+  finish.addEventListener('input',()=>setWindow(lo,Math.max(lo+4,+finish.value)));
+  indexHost.addEventListener('wheel',e=>{
+    if(!e.shiftKey||e.ctrlKey||e.metaKey||!plot||!e.deltaY)return;
+    e.preventDefault();
+    const rect=indexHost.getBoundingClientRect();
+    const rel=Math.max(0,Math.min(1,(e.clientX-rect.left-plot.left)/(plot.right-plot.left)));
+    const len=hi-lo+1, size=Math.min(last+1,Math.max(5,e.deltaY>0?Math.ceil(len*1.22):Math.floor(len/1.22)));
+    const start=lo+Math.round(rel*(len-size));
+    setWindow(start,start+size-1);
+  },{passive:false});
+  indexHost.addEventListener('pointerdown',e=>{
+    if(!plot||e.pointerType!=='mouse'||e.button!==0)return;
+    drag={x:e.clientX,lo,hi,id:e.pointerId,plotWidth:plot.right-plot.left};
+    indexHost.setPointerCapture(e.pointerId);
+  });
+  indexHost.addEventListener('pointermove',e=>{
+    if(!drag||drag.id!==e.pointerId)return;
+    const delta=e.clientX-drag.x;
+    if(Math.abs(delta)<4)return;
+    const n=Math.round(delta*(drag.hi-drag.lo+1)/drag.plotWidth);
+    setWindow(drag.lo-n,drag.hi-n);
+  });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(type=>indexHost.addEventListener(type,()=>{drag=null;}));
   async function selectIndex(){
     const id=++request;
     indexRows=null;$('index-chart').replaceChildren();$('index-day').disabled=true;
@@ -163,8 +210,12 @@ function setup(market){
   function drawIndex(){
     if(!indexRows)return;
     const c=chart($('index-chart'),market.indices[Number(select.value)]+' 的日 K 线和净申赎');
-    const n=Number($('index-range').value)||market.dates.length;
-    const rows=indexRows.slice(-n), dates=market.dates.slice(-n),split=c.h*.64,end=c.h-25;
+    plot=c;
+    begin.value=lo;finish.value=hi;
+    begin.setAttribute('aria-valuetext',market.dates[lo]);finish.setAttribute('aria-valuetext',market.dates[hi]);
+    $('index-window').textContent=market.dates[lo]+' 至 '+market.dates[hi];
+    rangeButtons.forEach(b=>b.setAttribute('aria-pressed',String(lookback!==null&&Number(b.dataset.days)===lookback)));
+    const rows=indexRows.slice(lo,hi+1),dates=market.dates.slice(lo,hi+1),split=c.h*.64,end=c.h-25;
     const x=i=>c.left+(i+.5)*(c.right-c.left)/rows.length;
     const [min,max]=limits(rows.flatMap(r=>r.length===5?[r[2],r[3]]:[]));
     const y=axes(c,min,max,12,split-14);
@@ -183,15 +234,61 @@ function setup(market){
       $('index-read').textContent=str;return str;
     });
   }
-  const funds=market.funds.toSorted((a,b)=>(b[5]??-Infinity)-(a[5]??-Infinity));
-  funds.forEach(([code,name,shares,...values])=>row($('funds'),[code+' '+name,fmt(shares),...values.slice(0,3).map(v=>[fmt(v,true),tone(v)])]));
-  const head=elt('tr',null);
-  ['ETF',...market.dates.slice(-10).map(d=>d.slice(5))].forEach(v=>head.append(elt('th',v,{scope:'col'})));
-  $('matrix-head').append(head);
-  funds.forEach(([code,name,,,,,detail])=>row($('matrix'),[code+' '+name,...detail.map(v=>[fmt(v,true),tone(v)])]));
+  const signedCell=v=>[fmt(v,true),tone(v)];
+  const groupLabel=(name,n)=>name==='全部'?'全部（'+(market.groups.length-1)+' 类 '+n+' 只）':name+' · '+n+' 只';
+  const strength=(v,max)=>{
+    const td=elt('td',null);
+    if(!Number.isFinite(v)){td.textContent='—';return td;}
+    const meter=elt('meter',null,{min:0,max,value:Math.min(Math.abs(v),max),class:tone(v),
+      'aria-label':'近一月净申赎 '+fmt(v,true)+' 亿元，满格 '+max+' 亿元',title:fmt(v,true)+' 亿元'});
+    td.append(meter);return td;
+  };
+  const fundLabel=([code,name,,,,,,,exchange,tag])=>{
+    const th=elt('th',null,{scope:'row',class:'fund-label'});
+    th.append(elt('span',exchange,{class:'exchange'}),' '+name+' ',elt('span',code,{class:'fund-code'}));
+    if(tag)th.append(' ',elt('span',tag,{class:'tag'}));
+    return th;
+  };
+  const sectionRow=(body,label,colspan)=>{
+    const tr=elt('tr',null,{class:'group-row'});
+    tr.append(elt('th',label,{colspan,scope:'colgroup'}));body.append(tr);
+  };
+  const matrixHead=id=>{
+    const head=elt('tr',null);
+    ['品种',...market.dates.slice(-10).map(d=>d.slice(5))].forEach(v=>head.append(elt('th',v,{scope:'col'})));
+    $(id).append(head);
+  };
+  const matrixCell=([amount,multiple])=>{
+    const td=elt('td',null);
+    td.append(elt('span',Number.isFinite(amount)?fmt(amount,true)+' 亿':'—',{class:tone(amount)}));
+    if(Number.isFinite(multiple))td.append(elt('small',fmt(multiple,true)+' 倍',{class:tone(multiple)}));
+    return td;
+  };
+  const groupsByName=new Map(market.groups.map(([name,n])=>[name,n]));
+  let previous=null;
+  for(const f of market.funds){
+    const [,,shares,day,week,month,,category]=f;
+    if(category!==previous)sectionRow($('funds'),groupLabel(category,groupsByName.get(category)),6);
+    previous=category;
+    row($('funds'),[fundLabel(f),fmt(shares),...([day,week,month].map(signedCell)),strength(month,50)]);
+  }
+  matrixHead('matrix-head');
+  matrixHead('group-matrix-head');
+  const byCode=new Map(market.funds.map(f=>[f[0],f]));
+  previous=null;
+  for(const code of market.matrixOrder){
+    const f=byCode.get(code),category=f[7];
+    if(category!==previous)sectionRow($('matrix'),groupLabel(category,groupsByName.get(category)),11);
+    previous=category;
+    row($('matrix'),[fundLabel(f),...f[6].map(matrixCell)]);
+  }
+  for(const [name,n,day,week,month,oldShares,oldValue,shares,value,detail] of market.groups){
+    const label=groupLabel(name,n);
+    row($('groups'),[label,...[day,week,month].map(signedCell),...([oldShares,oldValue,shares,value].map(v=>fmt(v))),name==='全部'?'—':strength(month,200)]);
+    row($('group-matrix'),[label,...detail.map(matrixCell)]);
+  }
   $('report').hidden=false;
   $('hold-range').addEventListener('change',drawHold);
-  $('index-range').addEventListener('change',drawIndex);
   select.addEventListener('change',selectIndex);
   [[ $('hold-chart'),drawHold ],[ $('daily-chart'),drawDaily ],[ $('index-chart'),drawIndex ]].forEach(([host,draw])=>{
     let width=0,height=0;

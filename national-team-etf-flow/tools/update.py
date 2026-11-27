@@ -66,40 +66,102 @@ class Tables(HTMLParser):
             self.cell.append(data)
 
 
-def details(page, dates):
+NUM = r"[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+TAGS = ("2025末汇金持仓", "2026.10救市")
+
+
+def table_number(value):
+    if value in ("", "—", "-", "–"):
+        return None
+    if not re.fullmatch(NUM, value):
+        raise ValueError(f"表格数字格式变化: {value!r}")
+    return float(value.replace(",", ""))
+
+
+def daily_cell(value):
+    if value in ("", "—", "-", "–"):
+        return [None, None]
+    match = re.fullmatch(rf"({NUM})(亿)?\s*(?:({NUM})倍)?", value)
+    if not match or (not match[2] and float(match[1].replace(",", "")) != 0):
+        raise ValueError(f"逐日金额或倍量格式变化: {value!r}")
+    return [table_number(match[1]), table_number(match[3] or "")]
+
+
+def details(page, dates, names):
     tables = Tables(page).tables
-    summary = next((t for t in tables if t and t[0][:2] == ["品种", "最新份额(亿)"]), None)
-    matrix = next((t for t in tables if t and len(t[0]) == 11 and t[0][0] == "品种"), None)
-    if summary is None or matrix is None:
-        raise ValueError("缺失品种汇总或逐日明细表")
-    if matrix[0][1:] != [d[5:] for d in dates[-10:]]:
-        raise ValueError("逐日明细交易日未对齐")
-    rows, daily = [], {}
-    code_re = re.compile(r"(\d{6})$")
-    for row in matrix[1:]:
-        if len(row) == 11 and row[0] != "合计":
-            if row[0] in daily:
-                raise ValueError("逐日品种重复")
-            daily[row[0]] = [float(m[1].replace(",", "")) if
-                               (m := re.match(r"([+-]?[\d,.]+)亿", s)) else None for s in row[1:]]
+    find = lambda head: next((t for t in tables if t and t[0][:len(head)] == head), None)
+    summary = find(["品种", "最新份额(亿)"])
+    group_summary = find(["指数类别", "今日", "近一周", "近一月",
+                          "2025-12-31份额(亿)", "2025-12-31市值(亿)"])
+    day_keys = [d[5:] for d in dates[-10:]]
+    matrix = find(["品种", *day_keys])
+    group_matrix = find(["指数类别", *day_keys])
+    if any(t is None for t in (summary, group_summary, matrix, group_matrix)):
+        raise ValueError("缺失汇总或明细数据，或近十个交易日未对齐")
+
+    def matrix_rows(table):
+        out = {}
+        for row in table[1:]:
+            if len(row) == 1:
+                continue
+            if len(row) != 11 or row[0] in out:
+                raise ValueError("明细表列数错误或标的重复")
+            out[row[0]] = [daily_cell(s) for s in row[1:]]
+        return out
+
+    daily, group_daily = matrix_rows(matrix), matrix_rows(group_matrix)
+    rows, code_by_key, category = [], {}, None
     for row in summary[1:]:
-        match = code_re.search(row[0]) if row else None
-        if not match or len(row) < 5:
+        if len(row) == 1:
+            group = re.fullmatch(r"(.+?)\s*·\s*\d+只", row[0])
+            if not group or group[1] not in names[1:]:
+                raise ValueError(f"未知分组: {row[0]}")
+            category = group[1]
             continue
-        code = match[1]
-        key = row[0][:match.start()].strip()
-        label = key[1:].strip()
-        # The upstream classifies 159949 correctly as 创业板, but labels its manager incorrectly.
-        label = (re.split(r"2025末汇金持仓|2026\.10救市", label)[0].strip()
-                 if code != "159949" else "创业板50ETF 华安")
-        vals = [float(s.replace(",", "")) if re.fullmatch(r"[+\-\d.,]+", s) else None for s in row[1:5]]
+        match = re.fullmatch(r"([沪深])(.+?)(\d{6})", row[0])
+        if not match or len(row) != 6 or not category:
+            raise ValueError("基金汇总行格式变化")
+        exchange, name, code = match.groups()
+        key = row[0][:-6].strip()
+        tag = next((v for v in TAGS if name.endswith(v)), None)
+        label = name.removesuffix(tag).strip() if tag else name.strip()
+        # Keep the established correction for this ticker's upstream manager label.
+        if code == "159949":
+            label = "创业板50ETF 华安"
+        vals = [table_number(s) for s in row[1:5]]
         if key not in daily or vals[0] is None or vals[0] < 0 or not label:
             raise ValueError(f"缺失或无效的品种字段: {code}")
-        rows.append([code, label, *vals, daily[key]])
-    if not 20 <= len(rows) <= 100 or len({row[0] for row in rows}) != len(rows):
-        raise ValueError("品种数量异常或重复")
-    return rows
+        code_by_key[key] = code
+        rows.append([code, label, *vals, daily[key], category, exchange, tag])
+    if not 20 <= len(rows) <= 100 or len({row[0] for row in rows}) != len(rows) or daily.keys() != code_by_key.keys():
+        raise ValueError("品种数量异常、重复或汇总与明细不匹配")
 
+    groups = []
+    names_seen = set()
+    for row in group_summary[1:]:
+        if len(row) != 9:
+            raise ValueError("指数汇总行列数变化")
+        key = row[0]
+        match = next(((name, int(m[1])) for name in names[1:]
+                      if (m := re.fullmatch(re.escape(name) + r"\s*(\d+)只", key))), None)
+        all_match = re.fullmatch(r"全部[（(](\d+)类\s*(\d+)只[）)]", key)
+        if all_match:
+            category, count = "全部", int(all_match[2])
+            if int(all_match[1]) != len(names) - 1 or count != len(rows):
+                raise ValueError("篮子总计数量不一致")
+        elif match:
+            category, count = match
+            if category not in names[1:] or count != sum(r[7] == category for r in rows):
+                raise ValueError(f"指数归集与基金汇总不匹配: {key}")
+        else:
+            raise ValueError(f"未知指数汇总: {key}")
+        if key not in group_daily or category in names_seen:
+            raise ValueError("指数明细缺失或类别重复")
+        names_seen.add(category)
+        groups.append([category, count, *[table_number(s) for s in row[1:8]], group_daily[key]])
+    if names_seen != set(names[1:]) | {"全部"} or len(group_daily) != len(groups):
+        raise ValueError("指数汇总/明细与指数 K 线分类不匹配")
+    return rows, groups, [code_by_key[key] for key in daily]
 
 def extract(page):
     holding, dates, names, quotes, flows = (exported(page, item) for item in
@@ -137,10 +199,14 @@ def extract(page):
                 raise ValueError(f"K线无效: {names[i]} {dates[j]}")
             items.append([flow[j], o, h, l, c])
         index[i] = items
+    funds, groups, matrix_order = details(page, dates, names)
+    stamp = re.findall(r"更新时间\s*<b>(\d{4}-\d{2}-\d{2} \d{2}:\d{2})</b>", page)
+    if len(stamp) != 1 or datetime.fromisoformat(stamp[0]).date() < date.fromisoformat(dates[-1]):
+        raise ValueError("缺失更新时间或早于数据日")
     return {
-        "schema": 1, "source": SOURCE, "asOf": dates[-1], "dates": dates,
+        "schema": 2, "source": SOURCE, "asOf": dates[-1], "sourceUpdatedAt": stamp[0], "dates": dates,
         "holdings": [v if v > 0 else None for v in values],
-        "funds": details(page, dates), "indices": names, "flow": flows[0],
+        "funds": funds, "groups": groups, "matrixOrder": matrix_order, "indices": names, "flow": flows[0],
     }, index
 
 
@@ -151,6 +217,7 @@ def serialize(value):
 def update(page, out):
     market, index = extract(page)
     pinned = out / "market.json"
+    old = None
     if pinned.exists():
         old = json.loads(pinned.read_text(encoding="utf-8"))
         if old["asOf"] > market["asOf"] or not set(old["dates"]).issubset(market["dates"]):
@@ -166,6 +233,13 @@ def update(page, out):
             raise ValueError("持仓历史出现新缺口，保留原有数据")
     out.mkdir(parents=True, exist_ok=True)
     files = {f"index-{i}.json": rows for i, rows in index.items()}
+    if (old is not None and old.get("sourceUpdatedAt") and
+            {k: v for k, v in old.items() if k != "sourceUpdatedAt"} ==
+            {k: v for k, v in market.items() if k != "sourceUpdatedAt"} and
+            all((out / name).is_file() and
+                (out / name).read_text(encoding="utf-8") == serialize(value)
+                for name, value in files.items())):
+        market["sourceUpdatedAt"] = old["sourceUpdatedAt"]
     files["market.json"] = market
     with tempfile.TemporaryDirectory(dir=out) as staging:
         for name, value in files.items():

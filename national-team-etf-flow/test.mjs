@@ -36,3 +36,17 @@ test('已发布数据同日对齐，整页可用',()=>{
   }
   assert.equal(snap.peak,Math.max(...data.holdings.filter(Number.isFinite)));
 });
+
+test('分组、ETF、全篮子与两份交易日矩阵齐全并按索引对齐',()=>{
+  const data=JSON.parse(readFileSync(new URL('./dist/data/market.json',import.meta.url)));
+  assert.equal(data.schema,2);
+  assert.equal(new Set(data.matrixOrder).size,data.funds.length);
+  assert.deepEqual(new Set(data.matrixOrder),new Set(data.funds.map(f=>f[0])));
+  assert.deepEqual(new Set(data.groups.map(g=>g[0])),new Set([...data.indices.slice(1),'全部']));
+  assert.equal(data.groups.find(g=>g[0]==='全部')[1],data.funds.length);
+  for (const f of data.funds) assert.ok(f[6].length===10&&f[6].every(x=>x.length===2));
+  for (const g of data.groups) {
+    assert.ok(g[9].length===10&&g[9].every(x=>x.length===2));
+    assert.equal(g[1],g[0]==='全部'?data.funds.length:data.funds.filter(f=>f[7]===g[0]).length);
+  }
+});
