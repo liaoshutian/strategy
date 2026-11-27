@@ -101,15 +101,16 @@ function setup(market){
   $('stamp').textContent='数据日 '+market.asOf+' · '+market.funds.length+' 只 ETF · 全市场资金流代理';
   $('coverage').textContent=s.holdDates[0]+' 至 '+market.asOf+' · 最长 '+s.holdDates.length+' 个交易日 · 亿元';
   const cards=$('cards');
-  card(cards,'持仓水位 · 当前 / 历史峰值',pct(s.level),fmt(s.current)+' / '+fmt(s.peak)+' 亿元', '',true);
-  card(cards,'近一周加仓力度 · 5 个交易日',pct(s.weekStrength,true),fmt(s.week,true)+' 亿元净申赎 / 峰值',tone(s.week),true);
-  card(cards,'近一月加仓力度 · 21 个交易日',pct(s.monthStrength,true),fmt(s.month,true)+' 亿元净申赎 / 峰值',tone(s.month),true);
   card(cards,'最新交易日 · 净申赎',fmt(market.flow.at(-1),true),market.asOf+' · 亿元',tone(market.flow.at(-1)));
   card(cards,'近一周净申赎',fmt(s.week,true),'最近 5 个交易日 · 亿元',tone(s.week));
   card(cards,'近一月净申赎',fmt(s.month,true),'最近 21 个交易日 · 亿元',tone(s.month));
   for(const [name,v] of [['近半年 · 120 日',rolling(market.flow,120)],['近一年 · 242 日',rolling(market.flow,242)],['今年以来',rolling(market.flow,market.dates.filter(d=>d.slice(0,4)===market.asOf.slice(0,4)).length)]]){
-    card($('periods'),name,fmt(v,true),'净申赎 · 亿元',tone(v));
+    card(cards,name,fmt(v,true),'净申赎 · 亿元',tone(v));
   }
+  const positions=$('position-cards');
+  card(positions,'持仓水位 · 当前 / 历史峰值',pct(s.level),fmt(s.current)+' / '+fmt(s.peak)+' 亿元', '',true);
+  card(positions,'近一周加仓力度 · 5 个交易日',pct(s.weekStrength,true),fmt(s.week,true)+' 亿元净申赎 / 峰值',tone(s.week),true);
+  card(positions,'近一月加仓力度 · 21 个交易日',pct(s.monthStrength,true),fmt(s.month,true)+' 亿元净申赎 / 峰值',tone(s.month),true);
   s.baselines.forEach(([name,v,p])=>row($('ratios'),[name+(name==='历史峰值'?' · '+s.peakDate:''),fmt(v),pct(p)]));
   const visible=[true,true,true,true,true,true];
   const series=[market.holdings,...s.ma], labels=['持仓金额',...WINDOWS.map(n=>'MA'+n)];

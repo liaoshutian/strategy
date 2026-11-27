@@ -17,9 +17,11 @@
   <p class="notice">「持仓」指样本 ETF 的全市场资产规模（份额 × 单位净值），会随价格变动；「加仓力度」指全市场净申赎相对历史持仓峰值的比例，两者均非汇金实际仓位或买卖。</p>
   <noscript><p>请启用 JavaScript 查看交互图表。</p></noscript>
   <div id="report" hidden>
-    <section aria-label="持仓及净申赎摘要">
+    <section aria-label="净申赎摘要">
       <div class="cards" id="cards"></div>
-      <details class="periods"><summary>更多期间净申赎</summary><div class="cards" id="periods"></div></details>
+    </section>
+    <section aria-label="持仓水位及加仓力度">
+      <div class="cards position-cards" id="position-cards"></div>
     </section>
     <section class="panel" aria-labelledby="hold-title">
       <div class="section-head"><div><h2 id="hold-title">累计持仓金额</h2><p id="coverage"></p></div>
