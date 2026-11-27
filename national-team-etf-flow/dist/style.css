@@ -50,6 +50,14 @@ button[aria-pressed="true"]{border-color:var(--blue);color:#154c93;background:#e
 .zoom-controls label{display:flex;align-items:center;gap:.25rem}
 #index-chart{cursor:grab;user-select:none}
 #index-chart:active{cursor:grabbing}
+.flow-profile{cursor:default}
+.profile-heading{font-weight:600}
+.profile-legend{display:flex;flex-wrap:wrap;gap:.15rem .55rem;font-size:.81rem;white-space:nowrap}
+.profile-backdrop{fill:#f4f7f8}
+.profile-hit{fill:transparent}
+.profile-selected .profile-hit{fill:#e2ebf1;stroke:#91a7ae;stroke-width:.6}
+.profile-buy{fill:#b84950;pointer-events:none}
+.profile-sell{fill:#258566;pointer-events:none}
 #daily-chart{min-width:44rem}
 .fund-label{font-weight:500}
 .exchange,.fund-code,.tag{display:inline-block;font-size:.75rem;color:var(--muted)}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {ratio,rolling,snapshot} from './dist/model.mjs';
+import {ratio,rolling,snapshot,flowProfile} from './dist/model.mjs';
 
 test('滚动净申赎保留负值；基数缺失不制作百分比',()=>{
   assert.equal(rolling([10,-5,-2],2),-7);
@@ -48,5 +48,29 @@ test('分组、ETF、全篮子与两份交易日矩阵齐全并按索引对齐',
   for (const g of data.groups) {
     assert.ok(g[9].length===10&&g[9].every(x=>x.length===2));
     assert.equal(g[1],g[0]==='全部'?data.funds.length:data.funds.filter(f=>f[7]===g[0]).length);
+  }
+});
+
+test('点位分档按收盘价，红绿各自累计，忽略缺值，最高点纳入末档',()=>{
+  const row=(f,cl)=>[f,125,160,100,cl];
+  const p=flowProfile([row(15,110),row(-6,120),row(3,150),row(-2,200),
+    row(null,110),row(100,null),row(100,201),row(0,180),[100]],100,200,2);
+  assert.deepEqual(p.bins,[{low:100,high:150,buy:15,sell:6},{low:150,high:200,buy:3,sell:2}]);
+  assert.equal(p.observed,5);
+  assert.equal(p.maxAmount,21);
+  assert.equal(flowProfile([[100],[null,120,130,110,125]],100,200).observed,0);
+});
+
+test('全区间或近期、不同指数的分档金额与有效日流水守恒',()=>{
+  for(const id of [0,1,12]){
+    const series=JSON.parse(readFileSync(new URL('./dist/data/index-'+id+'.json',import.meta.url)));
+    for(const rows of [series,series.slice(-60)]){
+      const valid=rows.filter(r=>Number.isFinite(r[0])&&Number.isFinite(r[4]));
+      assert.ok(valid.length);
+      const {bins,observed}=flowProfile(rows,Math.min(...valid.map(r=>r[3])),Math.max(...valid.map(r=>r[2])));
+      for(const [key,fn] of [['buy',f=>Math.max(0,f)],['sell',f=>Math.max(0,-f)]])
+        assert.ok(Math.abs(bins.reduce((a,b)=>a+b[key],0)-valid.reduce((a,r)=>a+fn(r[0]),0))<1e-6);
+      assert.equal(observed,valid.length);
+    }
   }
 });

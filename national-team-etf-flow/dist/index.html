@@ -37,7 +37,7 @@
       <p>右轴以完整历史持仓峰值为 100%，切换图表范围不改变基准。原站历史各日的基金可用性不一，不能当成全历史固定份额样本。</p>
     </section>
     <section class="panel" aria-labelledby="index-title">
-      <div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>默认中证全指；切换指数可看对应 ETF 的净申赎。上方为日 K 线，下方为净申赎（亿元）。</p></div>
+      <div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>默认中证全指；切换指数可看对应 ETF 的净申赎。上方为日 K 线，下方为每日净申赎，右侧按指数收盘点位分档汇总。</p></div>
       <label>指数 <select id="index-select"></select></label></div>
       <div class="range-buttons" role="group" aria-label="指数图表范围">
         <button type="button" data-days="60" aria-pressed="false">60 日</button>
@@ -46,13 +46,18 @@
         <button type="button" data-days="0" aria-pressed="false">全部</button>
       </div>
       <div id="index-chart" class="chart"></div>
+      <div class="reading profile-reading">
+        <div class="profile-legend" aria-label="申赎额图例"><span class="pos">■ 净买入</span><span class="neg">■ 净卖出</span></div>
+        <output id="profile-read" aria-live="off"></output>
+        <label>查看点位档 <input type="range" id="profile-band" min="0" step="1" disabled></label>
+      </div>
       <div class="reading"><output id="index-read"></output><label>查看交易日 <input type="range" id="index-day" min="0" step="1"></label></div>
       <div class="zoom-controls" role="group" aria-label="指数图表缩放与平移">
         <label>起始日 <input type="range" id="index-start" min="0" step="1"></label>
         <label>结束日 <input type="range" id="index-end" min="0" step="1"></label>
         <p id="index-window"></p>
       </div>
-      <p>可用滑杆调整区间，或在图上拖动平移、按住 Shift 滚动缩放。</p>
+      <p>可用滑杆调整区间，或在 K 线图上拖动平移、按住 Shift 滚动缩放。右侧红柱合计每日净申购，绿柱合计每日净赎回的绝对值，不代表实际买卖成交额。</p>
     </section>
     <section class="panel" aria-labelledby="fund-title"><h2 id="fund-title">分品种净申赎汇总</h2>
       <p>按指数分组，组内按近一月净申赎排序。金额单位亿元，份额单位亿份。</p>

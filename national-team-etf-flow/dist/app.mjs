@@ -1,4 +1,4 @@
-import {snapshot,rolling,ratio} from './model.mjs';
+import {snapshot,rolling,ratio,flowProfile} from './model.mjs';
 const $=id=>document.getElementById(id);
 const money=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const signed=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:'exceptZero'});
@@ -49,11 +49,13 @@ function axes(c,min,max,top,bottom,peak=null){
   }
   return scale;
 }
-function datesAxis(c,dates,x,y){
-  const slots=c.w<440?2:5;
+function datesAxis(c,dates,x,y,compact=false){
+  const width=c.right-c.left;
+  const short=compact&&width<280;
+  const slots=compact?(short?1:width<470?2:5):(c.w<440?2:5);
   for(let i=0;i<=slots;i++){
     const ix=Math.round(i*(dates.length-1)/slots);
-    svg(c.root,'text',{x:x(ix),y,'text-anchor':i===0?'start':i===slots?'end':'middle'},dates[ix]);
+    svg(c.root,'text',{x:x(ix),y,'text-anchor':i===0?'start':i===slots?'end':'middle'},short?dates[ix].slice(0,7):dates[ix]);
   }
 }
 function limits(values,includeZero=false){
@@ -86,6 +88,7 @@ function track(c,slider,len,x,start,end,read){
   }
   slider.oninput=()=>update(Number(slider.value));
   function pointer(e){
+    if(e.target.closest('.flow-profile'))return;
     const bounds=c.root.getBoundingClientRect();
     const local=(e.clientX-bounds.left)*c.w/bounds.width;
     update(Math.round((local-x(0))/(x(len-1)-x(0)||1)*(len-1)));
@@ -174,7 +177,7 @@ function setup(market){
   begin.addEventListener('input',()=>setWindow(Math.min(+begin.value,hi-4),hi));
   finish.addEventListener('input',()=>setWindow(lo,Math.max(lo+4,+finish.value)));
   indexHost.addEventListener('wheel',e=>{
-    if(!e.shiftKey||e.ctrlKey||e.metaKey||!plot||!e.deltaY)return;
+    if(!e.shiftKey||e.ctrlKey||e.metaKey||!plot||!e.deltaY||e.target.closest('.flow-profile'))return;
     e.preventDefault();
     const rect=indexHost.getBoundingClientRect();
     const rel=Math.max(0,Math.min(1,(e.clientX-rect.left-plot.left)/(plot.right-plot.left)));
@@ -183,7 +186,7 @@ function setup(market){
     setWindow(start,start+size-1);
   },{passive:false});
   indexHost.addEventListener('pointerdown',e=>{
-    if(!plot||e.pointerType!=='mouse'||e.button!==0)return;
+    if(!plot||e.pointerType!=='mouse'||e.button!==0||e.target.closest('.flow-profile'))return;
     drag={x:e.clientX,lo,hi,id:e.pointerId,plotWidth:plot.right-plot.left};
     indexHost.setPointerCapture(e.pointerId);
   });
@@ -197,7 +200,8 @@ function setup(market){
   ['pointerup','pointercancel','lostpointercapture'].forEach(type=>indexHost.addEventListener(type,()=>{drag=null;}));
   async function selectIndex(){
     const id=++request;
-    indexRows=null;$('index-chart').replaceChildren();$('index-day').disabled=true;
+    indexRows=null;plot=null;indexHost.replaceChildren();$('index-day').disabled=true;
+    $('profile-band').disabled=true;$('profile-read').textContent='';
     $('index-read').textContent='正在加载指数数据…';
     try {
       const name=Number(select.value);
@@ -209,7 +213,9 @@ function setup(market){
   }
   function drawIndex(){
     if(!indexRows)return;
-    const c=chart($('index-chart'),market.indices[Number(select.value)]+' 的日 K 线和净申赎');
+    const c=chart($('index-chart'),market.indices[Number(select.value)]+' 的日 K 线、净申赎和收盘点位分布');
+    const profileWidth=Math.round(Math.min(208,Math.max(69,c.w*.21)));
+    c.right=c.w-profileWidth-14;
     plot=c;
     begin.value=lo;finish.value=hi;
     begin.setAttribute('aria-valuetext',market.dates[lo]);finish.setAttribute('aria-valuetext',market.dates[hi]);
@@ -217,8 +223,9 @@ function setup(market){
     rangeButtons.forEach(b=>b.setAttribute('aria-pressed',String(lookback!==null&&Number(b.dataset.days)===lookback)));
     const rows=indexRows.slice(lo,hi+1),dates=market.dates.slice(lo,hi+1),split=c.h*.64,end=c.h-25;
     const x=i=>c.left+(i+.5)*(c.right-c.left)/rows.length;
-    const [min,max]=limits(rows.flatMap(r=>r.length===5?[r[2],r[3]]:[]));
-    const y=axes(c,min,max,12,split-14);
+    const [low,high]=limits(rows.flatMap(r=>r.length===5?[r[2],r[3]]:[]));
+    const min=Math.floor(low),max=Math.ceil(high),top=25;
+    const y=axes(c,min,max,top,split-14);
     const width=Math.max(.6,Math.min(9,(c.right-c.left)/rows.length*.72));
     rows.forEach((r,i)=>{
       if(r.length!==5)return;
@@ -227,12 +234,52 @@ function setup(market){
       svg(c.root,'rect',{x:x(i)-width/2,y:y(Math.max(o,close)),width,height:Math.max(.8,Math.abs(y(o)-y(close))),fill});
     });
     flowBars(c,rows.map(r=>r[0]),split,end,x);
-    datesAxis(c,dates,x,c.h-6);
-    track(c,$('index-day'),dates.length,x,12,end,i=>{
+    datesAxis(c,dates,x,c.h-6,true);
+    track(c,$('index-day'),dates.length,x,top,end,i=>{
       const [f,o,h,l,cl]=rows[i];
       const str=dates[i]+' · '+(cl===undefined?'K线缺值':'开 '+fmt(o)+'　高 '+fmt(h)+'　低 '+fmt(l)+'　收 '+fmt(cl))+'　净申赎 '+fmt(f,true)+' 亿';
       $('index-read').textContent=str;return str;
     });
+    drawProfile(c,rows,min,max,y,top,split-14);
+  }
+  function drawProfile(c,rows,min,max,y,top,bottom){
+    const {bins,observed,maxAmount}=flowProfile(rows,min,max);
+    const group=svg(c.root,'g',{class:'flow-profile'});
+    const start=c.right+12, end=c.w-4, lane=end-start;
+    const slider=$('profile-band'), read=$('profile-read');
+    svg(group,'rect',{class:'profile-backdrop',x:start,y:top,width:lane,height:bottom-top});
+    svg(group,'text',{x:start,y:13,class:'profile-heading'},lane<76?'申赎额':'申赎额（亿）');
+    line(group,start,top,start,bottom,{stroke:'#91a7ae'});
+    if(!observed||!maxAmount){
+      svg(group,'text',{x:start+4,y:(top+bottom)/2},observed?'无净申赎':'无数据');
+      slider.disabled=true;
+      read.textContent=observed?'所选区间无非零净申赎。':'所选区间无同日收盘点位与净申赎数据。';
+      return;
+    }
+    const bars=bins.map((bin,i)=>{
+      const band=svg(group,'g',{'data-band':i});
+      const upper=y(bin.high),lower=y(bin.low),height=lower-upper;
+      const buy=lane*(bin.buy/maxAmount),sell=lane*(bin.sell/maxAmount);
+      const label=fmt(bin.low)+'–'+fmt(bin.high)+' 点 · 净买入 '+fmt(bin.buy)+' 亿 · 净卖出 '+fmt(bin.sell)+' 亿';
+      svg(band,'title',{},label);
+      svg(band,'rect',{class:'profile-hit',x:start,y:upper,width:lane,height});
+      if(buy>0)svg(band,'rect',{class:'profile-buy',x:start,y:upper+1,width:buy,height:height-2});
+      if(sell>0)svg(band,'rect',{class:'profile-sell',x:start+buy,y:upper+1,width:sell,height:height-2});
+      const activate=()=>{
+        group.querySelector('.profile-selected')?.classList.remove('profile-selected');
+        band.classList.add('profile-selected');
+        slider.value=i;slider.setAttribute('aria-valuetext',label);read.textContent=label;
+      };
+      band.addEventListener('pointerenter',activate);
+      band.addEventListener('pointerdown',activate);
+      return activate;
+    });
+    svg(group,'text',{x:start,y:bottom+14},'0');
+    svg(group,'text',{x:end,y:bottom+14,'text-anchor':'end'},maxAmount.toLocaleString('zh-CN',{maximumFractionDigits:maxAmount<10?2:0}));
+    slider.disabled=false;slider.max=bins.length-1;
+    slider.oninput=()=>bars[Number(slider.value)]();
+    const lastClose=rows.findLast(r=>Number.isFinite(r[4]))?.[4];
+    bars[Math.max(0,bins.findIndex((b,i)=>lastClose>=b.low&&(lastClose<b.high||i===bins.length-1)))]();
   }
   const signedCell=v=>[fmt(v,true),tone(v)];
   const groupLabel=(name,n)=>name==='全部'?'全部（'+(market.groups.length-1)+' 类 '+n+' 只）':name+' · '+n+' 只';
