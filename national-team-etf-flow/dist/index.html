@@ -37,7 +37,7 @@
       <p>右轴以完整历史持仓峰值为 100%，切换图表范围不改变基准。原站历史各日的基金可用性不一，不能当成全历史固定份额样本。</p>
     </section>
     <section class="panel" aria-labelledby="index-title">
-      <div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>默认中证全指；切换指数可看对应 ETF 的净申赎。上方为日 K 线，下方为每日净申赎，右侧按指数收盘点位分档汇总。</p></div>
+      <div class="section-head"><div><h2 id="index-title">指数 K 线 × 每日净申赎</h2><p>默认中证全指；切换指数可看对应 ETF 的净申赎。上方为日 K 线，下方为每日净申赎，右侧按收盘价位分档汇总。</p><p id="proxy-note" hidden>MSCI中国A50 的 K 线采用 560050 ETF 价格（元）作为代理，不是指数点位。</p></div>
       <label>指数 <select id="index-select"></select></label></div>
       <div class="range-buttons" role="group" aria-label="指数图表范围">
         <button type="button" data-days="60" aria-pressed="false">60 日</button>
@@ -49,7 +49,7 @@
       <div class="reading profile-reading">
         <div class="profile-legend" aria-label="申赎额图例"><span class="pos">■ 净买入</span><span class="neg">■ 净卖出</span></div>
         <output id="profile-read" aria-live="off"></output>
-        <label>查看点位档 <input type="range" id="profile-band" min="0" step="1" disabled></label>
+        <label>查看价位档 <input type="range" id="profile-band" min="0" step="1" disabled></label>
       </div>
       <div class="reading"><output id="index-read"></output><label>查看交易日 <input type="range" id="index-day" min="0" step="1"></label></div>
       <div class="zoom-controls" role="group" aria-label="指数图表缩放与平移">

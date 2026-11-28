@@ -17,7 +17,20 @@ export function snapshot(data) {
     weekStrength:ratio(week,peak), monthStrength:ratio(month,peak)};
 }
 
-// Each day belongs to one closing-index band. Opposite signs never cancel.
+// The upstream MSCI China A50 series uses the listed 560050 ETF as its price proxy.
+export function candleScale(rows, name) {
+  const proxy=name==='MSCI中国A50';
+  const prices=rows.flatMap(r=>r.length===5?[r[2],r[3]]:[]).filter(Number.isFinite);
+  if(!prices.length)return {min:0,max:1,proxy};
+  const low=Math.min(...prices),high=Math.max(...prices);
+  const tick=proxy ? .01 : 1;
+  const padding=(high-low)*.06||tick;
+  const min=Math.floor((low-padding)/tick)*tick;
+  const max=Math.ceil((high+padding)/tick)*tick;
+  return {min,max,proxy};
+}
+
+// Each day belongs to one closing-price band. Opposite signs never cancel.
 export function flowProfile(rows,min,max,count=16) {
   const step=(max-min)/count;
   const bins=Array.from({length:count},(_,i)=>({

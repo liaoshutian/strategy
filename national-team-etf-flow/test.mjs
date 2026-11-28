@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {ratio,rolling,snapshot,flowProfile} from './dist/model.mjs';
+import {ratio,rolling,snapshot,flowProfile,candleScale} from './dist/model.mjs';
 
 test('滚动净申赎保留负值；基数缺失不制作百分比',()=>{
   assert.equal(rolling([10,-5,-2],2),-7);
@@ -73,4 +73,29 @@ test('全区间或近期、不同指数的分档金额与有效日流水守恒',
       assert.equal(observed,valid.length);
     }
   }
+});
+
+test('MSCI 中国 A50 ETF 代理用小数坐标分档，常规指数继续用点',()=>{
+  const load=id=>JSON.parse(readFileSync(new URL('./dist/data/index-'+id+'.json',import.meta.url))).slice(-120);
+  // Fixed sub-yuan/tick-scale fixture; independent of routine data refreshes.
+  const rows=Array.from({length:15},(_,i)=>{
+    const close=.898+i*.02;
+    return [i%2?1:-2,close,close,close,close];
+  });
+  const {min,max,proxy}=candleScale(rows,'MSCI中国A50');
+  assert.equal(proxy,true);
+  const lows=rows.filter(r=>r.length===5).map(r=>r[3]);
+  const highs=rows.filter(r=>r.length===5).map(r=>r[2]);
+  assert.ok(min<Math.min(...lows)&&max>Math.max(...highs));
+  assert.ok((Math.max(...highs)-Math.min(...lows))/(max-min)>.75);
+  const {bins,observed}=flowProfile(rows,min,max);
+  assert.ok(bins.filter(b=>b.buy||b.sell).length>3);
+  const valid=rows.filter(r=>Number.isFinite(r[0])&&Number.isFinite(r[4]));
+  assert.equal(observed,valid.length);
+  for(const [key,fn] of [['buy',f=>Math.max(0,f)],['sell',f=>Math.max(0,-f)]])
+    assert.ok(Math.abs(bins.reduce((a,b)=>a+b[key],0)-valid.reduce((a,r)=>a+fn(r[0]),0))<1e-6);
+  const standard=candleScale(load(1),'沪深300');
+  assert.equal(standard.proxy,false);
+  assert.ok(Number.isInteger(standard.min)&&Number.isInteger(standard.max));
+  assert.deepEqual(candleScale([], 'MSCI中国A50'),{min:0,max:1,proxy:true});
 });

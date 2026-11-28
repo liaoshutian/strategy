@@ -1,6 +1,7 @@
-import {snapshot,rolling,ratio,flowProfile} from './model.mjs';
+import {snapshot,rolling,ratio,flowProfile,candleScale} from './model.mjs';
 const $=id=>document.getElementById(id);
 const money=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const stockPrice=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:3,maximumFractionDigits:3});
 const signed=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:'exceptZero'});
 const fmt=(v,s=false)=>Number.isFinite(v)?(s?signed:money).format(v):'—';
 const pct=(v,s=false)=>v===null?'—':fmt(v,s)+'%';
@@ -39,12 +40,12 @@ function chart(host,title){
 function line(root,x1,y1,x2,y2,attrs={}){
   return svg(root,'line',{x1,y1,x2,y2,stroke:'#d2dfe5',...attrs});
 }
-function axes(c,min,max,top,bottom,peak=null){
+function axes(c,min,max,top,bottom,peak=null, tickLabel=v=>Math.round(v).toLocaleString('zh-CN')){
   const scale=v=>bottom-(v-min)/(max-min)*(bottom-top);
   for(let i=0;i<=4;i++){
     const v=min+(max-min)*i/4,y=scale(v);
     line(c.root,c.left,y,c.right,y);
-    svg(c.root,'text',{x:c.left-6,y:y+4,'text-anchor':'end'},Math.round(v).toLocaleString('zh-CN'));
+    svg(c.root,'text',{x:c.left-6,y:y+4,'text-anchor':'end'},tickLabel(v));
     if(peak>0)svg(c.root,'text',{class:'peak-axis-tick',x:c.right+6,y:y+4},Math.round(ratio(v,peak))+'%');
   }
   return scale;
@@ -213,7 +214,13 @@ function setup(market){
   }
   function drawIndex(){
     if(!indexRows)return;
-    const c=chart($('index-chart'),market.indices[Number(select.value)]+' 的日 K 线、净申赎和收盘点位分布');
+    const name=market.indices[Number(select.value)];
+    const rows=indexRows.slice(lo,hi+1),dates=market.dates.slice(lo,hi+1);
+    const {min,max,proxy}=candleScale(rows,name);
+    const price=proxy?v=>Number.isFinite(v)?stockPrice.format(v):'—':fmt;
+    const unit=proxy?'元':'点';
+    $('proxy-note').hidden=!proxy;
+    const c=chart($('index-chart'),name+(proxy?'（560050 ETF 价格代理，元）':'')+' 的日 K 线、净申赎和收盘价位分布');
     const profileWidth=Math.round(Math.min(208,Math.max(69,c.w*.21)));
     c.right=c.w-profileWidth-14;
     plot=c;
@@ -221,11 +228,10 @@ function setup(market){
     begin.setAttribute('aria-valuetext',market.dates[lo]);finish.setAttribute('aria-valuetext',market.dates[hi]);
     $('index-window').textContent=market.dates[lo]+' 至 '+market.dates[hi];
     rangeButtons.forEach(b=>b.setAttribute('aria-pressed',String(lookback!==null&&Number(b.dataset.days)===lookback)));
-    const rows=indexRows.slice(lo,hi+1),dates=market.dates.slice(lo,hi+1),split=c.h*.64,end=c.h-25;
+    const split=c.h*.64,end=c.h-25;
     const x=i=>c.left+(i+.5)*(c.right-c.left)/rows.length;
-    const [low,high]=limits(rows.flatMap(r=>r.length===5?[r[2],r[3]]:[]));
-    const min=Math.floor(low),max=Math.ceil(high),top=25;
-    const y=axes(c,min,max,top,split-14);
+    const top=25;
+    const y=axes(c,min,max,top,split-14,null,proxy?price:undefined);
     const width=Math.max(.6,Math.min(9,(c.right-c.left)/rows.length*.72));
     rows.forEach((r,i)=>{
       if(r.length!==5)return;
@@ -237,12 +243,12 @@ function setup(market){
     datesAxis(c,dates,x,c.h-6,true);
     track(c,$('index-day'),dates.length,x,top,end,i=>{
       const [f,o,h,l,cl]=rows[i];
-      const str=dates[i]+' · '+(cl===undefined?'K线缺值':'开 '+fmt(o)+'　高 '+fmt(h)+'　低 '+fmt(l)+'　收 '+fmt(cl))+'　净申赎 '+fmt(f,true)+' 亿';
+      const str=dates[i]+' · '+(cl===undefined?'K线缺值':'开 '+price(o)+'　高 '+price(h)+'　低 '+price(l)+'　收 '+price(cl)+' '+unit)+'　净申赎 '+fmt(f,true)+' 亿';
       $('index-read').textContent=str;return str;
     });
-    drawProfile(c,rows,min,max,y,top,split-14);
+    drawProfile(c,rows,min,max,y,top,split-14,price,unit);
   }
-  function drawProfile(c,rows,min,max,y,top,bottom){
+  function drawProfile(c,rows,min,max,y,top,bottom,price,unit){
     const {bins,observed,maxAmount}=flowProfile(rows,min,max);
     const group=svg(c.root,'g',{class:'flow-profile'});
     const start=c.right+12, end=c.w-4, lane=end-start;
@@ -253,14 +259,14 @@ function setup(market){
     if(!observed||!maxAmount){
       svg(group,'text',{x:start+4,y:(top+bottom)/2},observed?'无净申赎':'无数据');
       slider.disabled=true;
-      read.textContent=observed?'所选区间无非零净申赎。':'所选区间无同日收盘点位与净申赎数据。';
+      read.textContent=observed?'所选区间无非零净申赎。':'所选区间无同日收盘价位与净申赎数据。';
       return;
     }
     const bars=bins.map((bin,i)=>{
       const band=svg(group,'g',{'data-band':i});
       const upper=y(bin.high),lower=y(bin.low),height=lower-upper;
       const buy=lane*(bin.buy/maxAmount),sell=lane*(bin.sell/maxAmount);
-      const label=fmt(bin.low)+'–'+fmt(bin.high)+' 点 · 净买入 '+fmt(bin.buy)+' 亿 · 净卖出 '+fmt(bin.sell)+' 亿';
+      const label=price(bin.low)+'–'+price(bin.high)+' '+unit+' · 净买入 '+fmt(bin.buy)+' 亿 · 净卖出 '+fmt(bin.sell)+' 亿';
       svg(band,'title',{},label);
       svg(band,'rect',{class:'profile-hit',x:start,y:upper,width:lane,height});
       if(buy>0)svg(band,'rect',{class:'profile-buy',x:start,y:upper+1,width:buy,height:height-2});
